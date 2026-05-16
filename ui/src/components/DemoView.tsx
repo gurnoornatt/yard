@@ -21,9 +21,10 @@ function VerdictChip({ verdict }: { verdict: Verdict | null }) {
   )
 }
 
-export function DemoView({ records, onAnalyze }: {
+export function DemoView({ records, onAnalyze, onPreview }: {
   records: AnalysisRecord[]
   onAnalyze: () => void
+  onPreview: () => void
 }) {
   const completed  = records.filter(r => r.status === 'complete')
   const pursue     = completed.filter(r => r.verdict === 'PURSUE').length
@@ -80,14 +81,22 @@ export function DemoView({ records, onAnalyze }: {
           <p style={{ fontSize: 14, color: '#c4c7c8' }}>
             Upload an offering memorandum. Get an underwriting verdict in under 90 seconds.
           </p>
-          <button onClick={onAnalyze} style={{
-            marginTop: 20, padding: '10px 24px',
-            background: '#ffffff', color: '#141313',
-            border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600,
-            cursor: 'pointer', letterSpacing: '-0.01em',
-          }}>
-            Analyze a document →
-          </button>
+          <div style={{ marginTop: 20, display: 'flex', gap: 10, justifyContent: 'center', alignItems: 'center' }}>
+            <button onClick={onAnalyze} style={{
+              padding: '10px 24px', background: '#ffffff', color: '#141313',
+              border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600,
+              cursor: 'pointer', letterSpacing: '-0.01em',
+            }}>
+              Analyze a document →
+            </button>
+            <button onClick={onPreview} style={{
+              padding: '10px 20px', background: 'transparent', color: 'rgba(165,180,252,0.75)',
+              border: '1px solid rgba(99,102,241,0.25)', borderRadius: 8, fontSize: 13, fontWeight: 500,
+              cursor: 'pointer', letterSpacing: '-0.01em',
+            }}>
+              Preview live graph
+            </button>
+          </div>
         </div>
 
         {/* Stats */}

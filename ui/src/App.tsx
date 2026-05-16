@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { DemoView } from './components/DemoView'
 import { IngestionView } from './components/IngestionView'
+import { LiveIngestionView } from './components/LiveIngestionView'
 import type { AnalysisState, Verdict } from './types'
 
 export const SKILL_ORDER = [
@@ -44,7 +45,7 @@ function makeInitialState(): AnalysisState {
 }
 
 export default function App() {
-  const [view, setView]       = useState<'demo' | 'ingestion'>('demo')
+  const [view, setView]       = useState<'demo' | 'ingestion' | 'preview'>('demo')
   const [state, setState]     = useState<AnalysisState>(makeInitialState())
   const [file, setFile]       = useState<File | null>(null)
   const [records, setRecords] = useState<AnalysisRecord[]>(SEED_RECORDS)
@@ -137,13 +138,19 @@ export default function App() {
 
   return (
     <AnimatePresence mode="wait">
-      {view === 'demo' ? (
+      {view === 'demo' && (
         <motion.div key="demo" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-          <DemoView records={records} onAnalyze={() => setView('ingestion')} />
+          <DemoView records={records} onAnalyze={() => setView('ingestion')} onPreview={() => setView('preview')} />
         </motion.div>
-      ) : (
+      )}
+      {view === 'ingestion' && (
         <motion.div key="ingestion" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
           <IngestionView state={state} file={file} onFile={analyze} onBack={goBack} />
+        </motion.div>
+      )}
+      {view === 'preview' && (
+        <motion.div key="preview" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+          <LiveIngestionView onBack={() => setView('demo')} />
         </motion.div>
       )}
     </AnimatePresence>

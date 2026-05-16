@@ -1,280 +1,444 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { FileText, Check, BarChart2, Gavel, Upload, CheckCircle } from 'lucide-react'
-import type { AnalysisState, Verdict } from '../types'
+import { Upload } from 'lucide-react'
+import type { AnalysisState } from '../types'
+import { SKILL_ORDER } from '../App'
 
-type StepStatus = 'pending' | 'active' | 'complete'
+// ── Virtual canvas dimensions ─────────────────────────────────────────────────
+// Root and verdict are centered vertically; doc/reasoning nodes fill rows 0-9.
 
-const VERDICT_CONFIG: Record<string, { color: string; bg: string; border: string; glow: string }> = {
-  PURSUE:    { color: '#10b981', bg: 'rgba(16,185,129,0.08)', border: 'rgba(16,185,129,0.4)', glow: 'rgba(16,185,129,0.15)' },
-  WATCHLIST: { color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.4)', glow: 'rgba(245,158,11,0.15)' },
-  PASS:      { color: '#ef4444', bg: 'rgba(239,68,68,0.08)', border: 'rgba(239,68,68,0.4)', glow: 'rgba(239,68,68,0.15)' },
+const X_ROOT    = 100
+const X_DOC     = 370
+const X_REASON  = 650
+const X_VERDICT = 930
+const Y_TOP     = 40
+const ROW_H     = 56
+const CANVAS_W  = 1080
+const CANVAS_H  = 630   // Y_TOP + 9*ROW_H + 86 headroom
+
+// ── Node types ────────────────────────────────────────────────────────────────
+
+type NodeKind   = 'root' | 'doc' | 'reasoning' | 'verdict'
+type VerdictVal = 'PURSUE' | 'WATCHLIST' | 'PASS'
+
+interface GNode {
+  id: string
+  kind: NodeKind
+  label: string
+  sub?: string
+  verdict?: VerdictVal
+  row: number   // 0-9, skill index (ignored for root/verdict)
 }
 
-function deriveSteps(state: AnalysisState): StepStatus[] {
-  const sk = state.skills
+// ── Skill metadata ────────────────────────────────────────────────────────────
 
-  const parseSt = sk.parse_om?.status ?? 'idle'
-  const parse: StepStatus =
-    parseSt === 'complete' ? 'complete' :
-    parseSt === 'running'  ? 'active'   :
-    state.phase !== 'idle' ? 'active'   : 'pending'
-
-  const lookups = ['owner_lookup', 'deed_lookup', 'portfolio_crawler', 'permit_lookup', 'tax_lookup', 'violations_lookup', 'comps_lookup', 'maturity_estimator']
-  const anyRunning = lookups.some(n => sk[n]?.status === 'running')
-  const anyStarted = lookups.some(n => (sk[n]?.status ?? 'idle') !== 'idle')
-  const allDone    = lookups.every(n => ['complete', 'error'].includes(sk[n]?.status ?? 'idle'))
-  const extract: StepStatus =
-    allDone && anyStarted ? 'complete' :
-    anyRunning || anyStarted ? 'active' : 'pending'
-
-  const synthSt = sk.synthesize_analysis?.status ?? 'idle'
-  const analyze: StepStatus =
-    state.verdict ? 'complete' :
-    synthSt === 'running' || state.synthesisText.length > 0 ? 'active' : 'pending'
-
-  const verdict: StepStatus =
-    state.verdict ? 'complete' :
-    analyze === 'complete' ? 'active' : 'pending'
-
-  return [parse, extract, analyze, verdict]
+const SKILL_META: Record<string, { label: string; sub: string }> = {
+  parse_om:            { label: 'Offering Memorandum', sub: 'full document'       },
+  owner_lookup:        { label: 'Owner Records',       sub: 'county records'      },
+  deed_lookup:         { label: 'Deed & Loans',        sub: 'county clerk'        },
+  portfolio_crawler:   { label: 'Owner Portfolio',     sub: 'cross-reference'     },
+  permit_lookup:       { label: 'Building Permits',    sub: 'city records'        },
+  tax_lookup:          { label: 'Tax Status',          sub: 'appraisal district'  },
+  violations_lookup:   { label: 'Code Violations',     sub: 'city enforcement'    },
+  comps_lookup:        { label: 'Market Comps',        sub: 'submarket data'      },
+  maturity_estimator:  { label: 'Loan Maturity',       sub: 'calculated'          },
+  synthesize_analysis: { label: 'Research Brief',      sub: 'all sources'         },
 }
 
-const STEPS = [
-  { label: 'PARSE',   Icon: FileText },
-  { label: 'EXTRACT', Icon: BarChart2 },
-  { label: 'ANALYZE', Icon: BarChart2 },
-  { label: 'VERDICT', Icon: Gavel },
-]
+// ── Extract a one-line finding from completed skill data ──────────────────────
 
-function PipelineStep({ label, Icon, status, isLast }: {
-  label: string; Icon: React.ElementType; status: StepStatus; isLast: boolean
-}) {
-  const isActive   = status === 'active'
-  const isComplete = status === 'complete'
+function finding(skill: string, data: Record<string, unknown>): string | null {
+  switch (skill) {
+    case 'parse_om': {
+      const u = data.units as number | undefined
+      const y = data.year_built as number | undefined
+      const p = data.asking_price as number | undefined
+      return [u && u + ' units', y, p && '$' + (p / 1e6).toFixed(1) + 'M ask'].filter(Boolean).join(' · ') || null
+    }
+    case 'owner_lookup': {
+      const llc  = String(data.llc_name ?? '—')
+      const hold = data.hold_period_years as number | undefined
+      const oos  = data.owner_state && data.owner_state !== 'TX'
+      return [llc, hold && hold + 'yr hold', oos && 'out-of-state (' + data.owner_state + ')'].filter(Boolean).join(' · ')
+    }
+    case 'deed_lookup': {
+      const loans = data.loans as Array<Record<string, unknown>> | undefined
+      const loan  = loans?.[0]
+      if (!loan) return 'No loans on record'
+      const past = String(loan.note ?? '').toLowerCase().includes('past due')
+      const amt  = loan.loan_amount ? '$' + (Number(loan.loan_amount) / 1e6).toFixed(1) + 'M' : '—'
+      return [String(loan.lender ?? '—'), amt, past ? 'PAST DUE ⚠' : 'matures ' + String(loan.estimated_maturity ?? '—')].join(' · ')
+    }
+    case 'tax_lookup':
+      return data.delinquent
+        ? 'Delinquent · $' + Number(data.delinquency_amount).toLocaleString() + ' owed'
+        : 'Current · appraised $' + (data.appraised_value ? (Number(data.appraised_value) / 1e6).toFixed(1) + 'M' : '—')
+    case 'violations_lookup': {
+      const n = (data.open_violations as number) ?? 0
+      return n > 0 ? n + ' open violation' + (n > 1 ? 's' : '') : 'No open violations'
+    }
+    case 'comps_lookup': {
+      const avg = data.avg_price_per_unit as number | undefined
+      return avg ? 'Avg $' + (avg / 1000).toFixed(0) + 'k/unit · ' + String(data.rent_trend ?? '—') + ' trend' : null
+    }
+    case 'permit_lookup': {
+      const n = (data.permits as Array<unknown> | undefined)?.length ?? 0
+      return n + ' permit' + (n !== 1 ? 's' : '') + ' on file'
+    }
+    case 'portfolio_crawler': {
+      const n = (data.other_properties as Array<unknown> | undefined)?.length ?? 0
+      return n + ' other propert' + (n !== 1 ? 'ies' : 'y') + ' in portfolio'
+    }
+    case 'maturity_estimator': {
+      const m = data.months_to_maturity as number | undefined
+      if (m === undefined) return null
+      return m < 0
+        ? Math.abs(m) + ' months past due — high refi pressure'
+        : m + ' months to maturity'
+    }
+    case 'synthesize_analysis':
+      return 'Compiling analysis brief…'
+    default:
+      return null
+  }
+}
 
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-        <div style={{
-          width: isActive ? 48 : 40, height: isActive ? 48 : 40,
-          borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: isActive ? 'rgba(255,255,255,0.08)' : isComplete ? 'rgba(78,222,163,0.1)' : 'rgba(255,255,255,0.03)',
-          border: isActive ? '1px solid rgba(255,255,255,0.3)' : isComplete ? '1px solid rgba(78,222,163,0.5)' : '1px solid rgba(255,255,255,0.08)',
-          boxShadow: isActive ? '0 0 20px rgba(255,255,255,0.15)' : 'none',
-          transition: 'all 0.3s',
-        }}>
-          {isComplete
-            ? <Check size={isActive ? 20 : 16} color="#4edea3" />
-            : <Icon size={isActive ? 22 : 18} color={isActive ? '#ffffff' : '#8e9192'} />
-          }
-        </div>
-        <span style={{
-          fontSize: 11, fontWeight: isActive ? 700 : 500,
-          letterSpacing: '0.15em', fontFamily: 'JetBrains Mono, monospace',
-          color: isActive ? '#ffffff' : isComplete ? '#4edea3' : 'rgba(142,145,146,0.4)',
-          transition: 'color 0.3s',
-        }}>{label}</span>
+// ── Build node list from live state ──────────────────────────────────────────
+
+function buildNodes(state: AnalysisState, fileName: string): GNode[] {
+  const nodes: GNode[] = [{ id: 'root', kind: 'root', label: fileName, row: 0 }]
+
+  SKILL_ORDER.forEach((sk, i) => {
+    const s = state.skills[sk]
+    if (!s || s.status === 'idle') return
+    nodes.push({ id: 'doc-' + sk, kind: 'doc', label: SKILL_META[sk].label, sub: SKILL_META[sk].sub, row: i })
+    if ((s.status === 'complete' || s.status === 'error') && s.data) {
+      const f = finding(sk, s.data)
+      if (f) nodes.push({ id: 'r-' + sk, kind: 'reasoning', label: f, row: i })
+    }
+  })
+
+  if (state.verdict) {
+    nodes.push({ id: 'verdict', kind: 'verdict', label: state.verdict, verdict: state.verdict as VerdictVal, row: 0 })
+  }
+
+  return nodes
+}
+
+// ── Node → canvas position ────────────────────────────────────────────────────
+
+function pos(n: GNode): { x: number; y: number } {
+  if (n.kind === 'root')      return { x: X_ROOT,    y: CANVAS_H / 2 }
+  if (n.kind === 'verdict')   return { x: X_VERDICT, y: CANVAS_H / 2 }
+  if (n.kind === 'doc')       return { x: X_DOC,     y: Y_TOP + n.row * ROW_H }
+  /* reasoning */              return { x: X_REASON,  y: Y_TOP + n.row * ROW_H }
+}
+
+// ── Derive "active" node id ───────────────────────────────────────────────────
+
+function activeId(state: AnalysisState, nodes: GNode[]): string {
+  if (state.verdict) return 'verdict'
+  for (let i = SKILL_ORDER.length - 1; i >= 0; i--) {
+    const sk = state.skills[SKILL_ORDER[i]]
+    if (!sk) continue
+    if (sk.status === 'complete' && nodes.find(n => n.id === 'r-' + SKILL_ORDER[i])) return 'r-' + SKILL_ORDER[i]
+    if (sk.status === 'running') return 'doc-' + SKILL_ORDER[i]
+  }
+  return 'root'
+}
+
+// ── Bottom thought line ───────────────────────────────────────────────────────
+
+function thought(state: AnalysisState): string {
+  if (state.verdict) return 'Analysis complete — verdict: ' + state.verdict
+  if (state.synthesisText) {
+    const lines = state.synthesisText.split('\n').filter(l => l.trim() && !l.startsWith('##'))
+    const last  = lines[lines.length - 1] ?? ''
+    return last.slice(0, 110) + (last.length > 110 ? '…' : '') || 'Writing analysis…'
+  }
+  const running = [...SKILL_ORDER].reverse().find(n => state.skills[n]?.status === 'running')
+  if (running) return 'Checking ' + SKILL_META[running].label.toLowerCase() + '…'
+  const done = [...SKILL_ORDER].reverse().find(n => state.skills[n]?.status === 'complete')
+  if (done) return SKILL_META[done].label + ' complete.'
+  if (state.phase === 'uploading') return 'Uploading document…'
+  return 'Initializing…'
+}
+
+// ── Verdict color config ──────────────────────────────────────────────────────
+
+const VC: Record<VerdictVal, { bg: string; border: string; text: string; glow: string }> = {
+  PURSUE:    { bg: 'rgba(16,185,129,0.1)',  border: 'rgba(16,185,129,0.5)',  text: '#10b981', glow: '0 0 28px rgba(16,185,129,0.25)' },
+  WATCHLIST: { bg: 'rgba(245,158,11,0.1)', border: 'rgba(245,158,11,0.5)', text: '#f59e0b', glow: '0 0 28px rgba(245,158,11,0.25)' },
+  PASS:      { bg: 'rgba(239,68,68,0.1)',   border: 'rgba(239,68,68,0.5)',   text: '#ef4444', glow: '0 0 28px rgba(239,68,68,0.25)'  },
+}
+
+// ── Node box ──────────────────────────────────────────────────────────────────
+
+function NodeBox({ n, active }: { n: GNode; active: boolean }) {
+  if (n.kind === 'root') return (
+    <div style={{
+      padding: '8px 16px', borderRadius: 10, minWidth: 150, maxWidth: 180, textAlign: 'center',
+      background: 'rgba(255,255,255,0.05)',
+      border: '1px solid ' + (active ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.14)'),
+      boxShadow: active ? '0 0 18px rgba(99,102,241,0.3)' : 'none',
+    }}>
+      <div style={{ fontSize: 9, fontFamily: 'JetBrains Mono,monospace', color: '#8e9192', letterSpacing: '0.1em', marginBottom: 3 }}>DOCUMENT</div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: '#e5e2e1', wordBreak: 'break-all', lineHeight: 1.3 }}>{n.label}</div>
+    </div>
+  )
+
+  if (n.kind === 'verdict') {
+    const v = VC[n.verdict!]
+    return (
+      <div style={{
+        padding: '10px 22px', borderRadius: 9999, textAlign: 'center',
+        background: v.bg, border: '1.5px solid ' + v.border, boxShadow: v.glow,
+      }}>
+        <div style={{ fontSize: 9, fontFamily: 'JetBrains Mono,monospace', color: v.text, letterSpacing: '0.12em', marginBottom: 3 }}>VERDICT</div>
+        <div style={{ fontSize: 17, fontWeight: 700, color: v.text }}>{n.verdict}</div>
       </div>
-      {!isLast && (
-        <div style={{
-          flex: 1, height: 2, margin: '0 12px', marginBottom: 28,
-          background: isComplete ? '#ffffff' : 'rgba(255,255,255,0.06)',
-          boxShadow: isComplete ? '0 0 12px rgba(255,255,255,0.2)' : 'none',
-          transition: 'all 0.4s',
-        }} />
-      )}
+    )
+  }
+
+  if (n.kind === 'doc') return (
+    <div style={{
+      padding: '5px 11px', borderRadius: 7, minWidth: 130,
+      background: active ? 'rgba(99,102,241,0.13)' : 'rgba(99,102,241,0.06)',
+      border: '1px solid ' + (active ? 'rgba(99,102,241,0.55)' : 'rgba(99,102,241,0.2)'),
+      boxShadow: active ? '0 0 12px rgba(99,102,241,0.2)' : 'none',
+    }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: active ? '#a5b4fc' : '#818cf8' }}>{n.label}</div>
+      {n.sub && <div style={{ fontSize: 9, fontFamily: 'JetBrains Mono,monospace', color: 'rgba(129,140,248,0.45)', marginTop: 1 }}>{n.sub}</div>}
+    </div>
+  )
+
+  // reasoning
+  return (
+    <div style={{
+      padding: '5px 11px', borderRadius: 7, maxWidth: 205,
+      background: active ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.02)',
+      border: '1px solid ' + (active ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.07)'),
+    }}>
+      <div style={{ fontSize: 11, color: '#c4c7c8', lineHeight: 1.4 }}>{n.label}</div>
     </div>
   )
 }
 
+// ── SVG edge ──────────────────────────────────────────────────────────────────
+
+function Edge({ from, to, lit }: { from: { x: number; y: number }; to: { x: number; y: number }; lit: boolean }) {
+  const mx = (from.x + to.x) / 2
+  const d  = `M ${from.x} ${from.y} C ${mx} ${from.y}, ${mx} ${to.y}, ${to.x} ${to.y}`
+  return (
+    <motion.path d={d} fill="none"
+      stroke={lit ? 'rgba(99,102,241,0.75)' : 'rgba(255,255,255,0.08)'}
+      strokeWidth={lit ? 1.5 : 1}
+      initial={{ pathLength: 0, opacity: 0 }}
+      animate={{ pathLength: 1, opacity: 1 }}
+      transition={{ duration: 0.38, ease: 'easeOut' }}
+    />
+  )
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+
 export function IngestionView({ state, file, onFile, onBack }: {
-  state: AnalysisState
-  file: File | null
+  state:  AnalysisState
+  file:   File | null
   onFile: (f: File) => void
   onBack: () => void
 }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [scale,    setScale]    = useState(1)
   const [dragging, setDragging] = useState(false)
-  const steps = deriveSteps(state)
-  const isProcessing = state.phase === 'uploading' || state.phase === 'analyzing'
-  const isDone       = state.phase === 'done'
 
-  const completedSkillCount = Object.values(state.skills).filter(s => s.status === 'complete').length
-  const progress =
-    isDone ? 100 :
-    state.phase === 'uploading' ? 18 :
-    state.phase === 'analyzing' ? 18 + Math.round((completedSkillCount / 10) * 80) : 0
+  const isRunning = state.phase === 'uploading' || state.phase === 'analyzing'
+  const isDone    = state.phase === 'done'
+  const nodes     = file ? buildNodes(state, file.name) : []
+  const posMap    = new Map(nodes.map(n => [n.id, pos(n)]))
+  const active    = file ? activeId(state, nodes) : ''
+  const currentThought = file ? thought(state) : 'Drop a PDF to begin the analysis.'
+  const doneCount = Object.values(state.skills).filter(s => s.status === 'complete').length
+
+  // Build edges
+  const edges = nodes.flatMap(n => {
+    let pId: string | null = null
+    if (n.kind === 'doc')       pId = 'root'
+    else if (n.kind === 'reasoning') pId = 'doc-' + n.id.replace('r-', '')
+    else if (n.kind === 'verdict') {
+      const rSynth = nodes.find(x => x.id === 'r-synthesize_analysis')
+      const lastR  = [...nodes].reverse().find(x => x.kind === 'reasoning')
+      pId = rSynth?.id ?? lastR?.id ?? 'root'
+    }
+    if (!pId) return []
+    const from = posMap.get(pId); const to = posMap.get(n.id)
+    if (!from || !to) return []
+    const lit = n.id === active || pId === active
+    return [{ id: 'e-' + n.id, from, to, lit }]
+  })
+
+  // Scale graph to fit container
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el || !file) return
+    const s = Math.min((el.offsetWidth - 40) / CANVAS_W, (el.offsetHeight - 40) / CANVAS_H, 1)
+    setScale(s)
+  }, [file, nodes.length])
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault(); setDragging(false)
-    const f = e.dataTransfer.files[0]
-    if (f) onFile(f)
+    const f = e.dataTransfer.files[0]; if (f) onFile(f)
   }
-  const handleClick = () => {
-    if (isProcessing) return
+  const openPicker = () => {
+    if (file) return
     const inp = document.createElement('input')
     inp.type = 'file'; inp.accept = '.pdf'
-    inp.onchange = (e) => { const f = (e.target as HTMLInputElement).files?.[0]; if (f) onFile(f) }
+    inp.onchange = ev => { const f = (ev.target as HTMLInputElement).files?.[0]; if (f) onFile(f) }
     inp.click()
   }
-
-  const verdict = state.verdict
-  const vc = verdict ? VERDICT_CONFIG[verdict] : null
 
   return (
     <div className="mesh-bg" style={{ minHeight: '100vh', background: '#080808', display: 'flex', flexDirection: 'column' }}>
 
-      {/* Header */}
+      {/* ── Header ── */}
       <header style={{
-        position: 'sticky', top: 0, zIndex: 50,
+        flexShrink: 0, position: 'sticky', top: 0, zIndex: 50,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '0 24px', height: 64,
-        background: 'rgba(8,8,8,0.6)', backdropFilter: 'blur(20px)',
-        borderBottom: '1px solid rgba(255,255,255,0.05)', width: '100%',
+        background: 'rgba(8,8,8,0.75)', backdropFilter: 'blur(20px)',
+        borderBottom: '1px solid rgba(255,255,255,0.05)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 20, fontWeight: 700, letterSpacing: '-0.02em', color: '#ffffff' }}>Sentinel</span>
-          <span style={{ fontSize: 12, color: 'rgba(196,199,200,0.5)', fontWeight: 400 }}>OM Analyzer</span>
+          <span style={{ fontSize: 20, fontWeight: 700, letterSpacing: '-0.02em', color: '#fff' }}>Sentinel</span>
+          <span style={{ fontSize: 12, color: 'rgba(196,199,200,0.4)' }}>OM Analyzer</span>
+          {isRunning && (
+            <motion.span animate={{ opacity: [0.4, 1, 0.4] }} transition={{ duration: 1.4, repeat: Infinity }}
+              style={{ marginLeft: 8, fontSize: 10, fontFamily: 'JetBrains Mono,monospace', color: 'rgba(99,102,241,0.85)', letterSpacing: '0.12em' }}>
+              LIVE
+            </motion.span>
+          )}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(255,255,255,0.05)', padding: 4, borderRadius: 9999 }}>
-          <button onClick={onBack} style={{
-            padding: '6px 16px', borderRadius: 9999, fontSize: 12, fontWeight: 500,
-            background: 'transparent', color: '#c4c7c8', border: 'none', cursor: 'pointer',
-          }}>History</button>
-          <button style={{
-            padding: '6px 16px', borderRadius: 9999, fontSize: 12, fontWeight: 500,
-            background: '#ffffff', color: '#141313', border: 'none', cursor: 'pointer',
-          }}>Analyze</button>
+        <div style={{ display: 'flex', gap: 4, background: 'rgba(255,255,255,0.05)', padding: 4, borderRadius: 9999 }}>
+          <button onClick={onBack} style={{ padding: '6px 16px', borderRadius: 9999, fontSize: 12, fontWeight: 500, background: 'transparent', color: '#c4c7c8', border: 'none', cursor: 'pointer' }}>History</button>
+          <button style={{ padding: '6px 16px', borderRadius: 9999, fontSize: 12, fontWeight: 500, background: 'rgba(255,255,255,0.1)', color: '#fff', border: 'none', cursor: 'pointer' }}>Analyze</button>
         </div>
       </header>
 
-      {/* Main */}
-      <main style={{
-        flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
-        justifyContent: 'center', padding: '32px 24px', maxWidth: 800, margin: '0 auto', width: '100%', gap: 0,
-      }}>
-        {/* Headline */}
-        <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <h1 style={{ fontSize: 36, fontWeight: 600, letterSpacing: '-0.02em', color: '#ffffff', lineHeight: 1.22 }}>
-            Drop a document. Watch it get analyzed.
-          </h1>
-          <p style={{ fontSize: 14, color: '#c4c7c8', opacity: 0.6, marginTop: 8 }}>
-            Institutional-grade extraction and autonomous risk modeling.
-          </p>
-        </div>
+      {/* ── Graph / upload area ── */}
+      <div ref={containerRef} style={{ flex: 1, position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
 
         {/* Upload zone */}
-        <div
-          className="glass"
-          onClick={handleClick}
-          onDrop={handleDrop}
-          onDragOver={e => { e.preventDefault(); setDragging(true) }}
-          onDragLeave={() => setDragging(false)}
-          style={{
-            width: '100%', minHeight: 320,
-            border: `2px dashed ${dragging ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.1)'}`,
-            borderRadius: 16,
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-            padding: 32, cursor: isProcessing ? 'default' : 'pointer',
-            transition: 'border-color 0.2s',
-            gap: 24,
-          }}
-        >
-          {/* Upload icon — always show at top */}
-          {!file && (
-            <div style={{
-              padding: 16, background: 'rgba(255,255,255,0.05)',
-              borderRadius: '50%', border: '1px solid rgba(255,255,255,0.1)',
-            }}>
-              <Upload size={40} color="#ffffff" />
-            </div>
-          )}
-
-          {/* File progress card */}
-          <AnimatePresence>
-            {file && (
-              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-                style={{
-                  width: '100%', maxWidth: 400,
-                  background: 'rgba(255,255,255,0.05)', backdropFilter: 'blur(20px)',
-                  borderRadius: 16, padding: 16, border: '1px solid rgba(255,255,255,0.1)',
-                }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <FileText size={20} color="#4edea3" />
-                    <div>
-                      <p style={{ fontSize: 12, fontWeight: 500, color: '#e5e2e1' }}>{file.name}</p>
-                      <p style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(196,199,200,0.5)' }}>
-                        {(file.size / 1024 / 1024).toFixed(1)} MB
-                      </p>
-                    </div>
-                  </div>
-                  <span style={{ fontSize: 12, fontFamily: 'JetBrains Mono, monospace', color: '#4edea3' }}>{progress}%</span>
-                </div>
-                <div style={{ height: 6, width: '100%', background: 'rgba(255,255,255,0.08)', borderRadius: 9999, overflow: 'hidden' }}>
-                  <motion.div
-                    animate={{ width: `${progress}%` }}
-                    transition={{ duration: 0.5, ease: 'easeOut' }}
-                    style={{
-                      height: '100%', background: '#4edea3', borderRadius: 9999,
-                      boxShadow: '0 0 10px rgba(78,222,163,0.5)',
-                    }}
-                  />
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Status text */}
-          <p style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'rgba(196,199,200,0.4)', fontFamily: 'JetBrains Mono, monospace' }}>
-            {!file ? 'Drop PDF here or click to browse' : isProcessing ? 'Proprietary Agent-Lead Analysis in Progress' : isDone ? 'Analysis complete' : 'Ready'}
-          </p>
-        </div>
-
-        {/* Pipeline stepper */}
-        <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 40, padding: '0 8px' }}>
-          {STEPS.map(({ label, Icon }, i) => (
-            <PipelineStep
-              key={label}
-              label={label}
-              Icon={i === 2 ? BarChart2 : Icon}
-              status={steps[i]}
-              isLast={i === STEPS.length - 1}
-            />
-          ))}
-        </div>
-
-        {/* Verdict pill */}
         <AnimatePresence>
-          {vc && verdict && (
-            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-              style={{ marginTop: 40, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-              <p style={{ fontSize: 11, fontWeight: 500, letterSpacing: '0.15em', textTransform: 'uppercase', color: 'rgba(142,145,146,0.6)', fontFamily: 'JetBrains Mono, monospace' }}>
-                Initial Determination
-              </p>
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 12,
-                padding: '14px 28px',
-                background: vc.bg, border: `1px solid ${vc.border}`,
-                borderRadius: 9999,
-                boxShadow: `0 10px 40px ${vc.glow}`,
-              }}>
-                <div style={{ width: 28, height: 28, borderRadius: '50%', background: `${vc.color}22`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <CheckCircle size={18} color={vc.color} fill={vc.color} />
-                </div>
-                <span style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.01em', color: vc.color, textTransform: 'uppercase' }}>
-                  {verdict.charAt(0) + verdict.slice(1).toLowerCase()}
-                </span>
+          {!file && (
+            <motion.div
+              key="upload"
+              initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.97 }}
+              className="glass"
+              onClick={openPicker}
+              onDrop={handleDrop}
+              onDragOver={e => { e.preventDefault(); setDragging(true) }}
+              onDragLeave={() => setDragging(false)}
+              style={{
+                width: 400, padding: '52px 40px', borderRadius: 16, cursor: 'pointer',
+                border: `2px dashed ${dragging ? 'rgba(99,102,241,0.6)' : 'rgba(255,255,255,0.1)'}`,
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 20,
+                transition: 'border-color 0.2s',
+              }}
+            >
+              <div style={{ padding: 16, background: 'rgba(255,255,255,0.04)', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <Upload size={34} color="#fff" strokeWidth={1.5} />
               </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 16, fontWeight: 600, color: '#fff', marginBottom: 6 }}>Drop an offering memorandum</div>
+                <div style={{ fontSize: 13, color: '#8e9192' }}>PDF · any broker format · any market</div>
+              </div>
+              <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono,monospace', color: 'rgba(142,145,146,0.4)', letterSpacing: '0.1em' }}>or click to browse</div>
             </motion.div>
           )}
         </AnimatePresence>
-      </main>
 
-      {/* Background blobs */}
-      <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: -10, overflow: 'hidden' }}>
-        <div style={{ position: 'absolute', top: '-15%', left: '-10%', width: '50%', height: '50%', background: 'rgba(255,255,255,0.06)', borderRadius: '50%', filter: 'blur(140px)' }} />
-        <div style={{ position: 'absolute', bottom: '-10%', right: '-10%', width: '40%', height: '40%', background: 'rgba(78,222,163,0.07)', borderRadius: '50%', filter: 'blur(120px)' }} />
+        {/* Node graph */}
+        <AnimatePresence>
+          {file && (
+            <motion.div key="graph" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+              style={{
+                position: 'relative',
+                width: CANVAS_W, height: CANVAS_H,
+                transform: `scale(${scale})`, transformOrigin: 'center center',
+              }}
+            >
+              {/* Edges (SVG) */}
+              <svg style={{ position: 'absolute', inset: 0, overflow: 'visible', pointerEvents: 'none' }} width={CANVAS_W} height={CANVAS_H}>
+                <AnimatePresence>
+                  {edges.map(e => <Edge key={e.id} from={e.from} to={e.to} lit={e.lit} />)}
+                </AnimatePresence>
+              </svg>
+
+              {/* Node boxes */}
+              <AnimatePresence>
+                {nodes.map(n => {
+                  const p = posMap.get(n.id)
+                  if (!p) return null
+                  return (
+                    <motion.div key={n.id}
+                      initial={{ opacity: 0, scale: 0.86 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                      style={{ position: 'absolute', left: p.x, top: p.y, transform: 'translate(-50%, -50%)' }}
+                    >
+                      <NodeBox n={n} active={n.id === active} />
+                    </motion.div>
+                  )
+                })}
+              </AnimatePresence>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Background blobs */}
+        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: -1 }}>
+          <div style={{ position: 'absolute', top: '-20%', left: '-10%', width: '45%', height: '60%', background: 'rgba(255,255,255,0.04)', borderRadius: '50%', filter: 'blur(140px)' }} />
+          <div style={{ position: 'absolute', bottom: '-10%', right: '-5%', width: '38%', height: '50%', background: 'rgba(78,222,163,0.05)', borderRadius: '50%', filter: 'blur(120px)' }} />
+        </div>
+      </div>
+
+      {/* ── Bottom bar ── */}
+      <div style={{
+        flexShrink: 0,
+        borderTop: '1px solid rgba(255,255,255,0.05)',
+        background: 'rgba(8,8,8,0.88)', backdropFilter: 'blur(20px)',
+        padding: '13px 28px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 20,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+          {file && isRunning && (
+            <motion.span animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.1, repeat: Infinity }}
+              style={{ width: 6, height: 6, borderRadius: '50%', background: '#6366f1', flexShrink: 0 }} />
+          )}
+          {file && isDone && (
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10b981', flexShrink: 0 }} />
+          )}
+          <AnimatePresence mode="wait">
+            <motion.p key={currentThought}
+              initial={{ opacity: 0, y: 3 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}
+              style={{ fontSize: 13, color: '#8e9192', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {currentThought}
+            </motion.p>
+          </AnimatePresence>
+        </div>
+
+        {file && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0 }}>
+            <span style={{ fontSize: 11, fontFamily: 'JetBrains Mono,monospace', color: 'rgba(142,145,146,0.5)' }}>
+              {doneCount}/{SKILL_ORDER.length}
+            </span>
+            {isDone && (
+              <button onClick={onBack} style={{ padding: '7px 16px', borderRadius: 7, fontSize: 12, fontWeight: 500, background: '#fff', color: '#141313', border: 'none', cursor: 'pointer' }}>
+                New analysis
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
