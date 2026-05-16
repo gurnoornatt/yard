@@ -1,8 +1,14 @@
-import json, sys
+import json, os, sys
 from pathlib import Path
 
-DATA = Path(__file__).resolve().parents[2] / "data" / "demo_properties"
-REPORTS = Path(__file__).resolve().parents[2] / "reports"
+DATA = Path(os.environ.get(
+    "SENTINEL_DATA_DIR",
+    str(Path(__file__).resolve().parents[2] / "data" / "demo_properties")
+))
+REPORTS = Path(os.environ.get(
+    "SENTINEL_PROJECT_DIR",
+    str(Path(__file__).resolve().parents[2])
+)) / "reports"
 
 
 def run(params: dict) -> dict:
