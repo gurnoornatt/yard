@@ -7,4 +7,8 @@ dependencies = [
     "pypdf>=4.0.0",
     "pdfplumber>=0.11.0",
     "fpdf2>=2.8.0",
+    "fastapi>=0.136.1",
+    "uvicorn>=0.47.0",
+    "python-multipart>=0.0.28",
+    "openai>=2.37.0",
 ]
