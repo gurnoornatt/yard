@@ -1,20 +1,67 @@
-import json, sys
-from pathlib import Path
+import json
+import sys
 
-import os as _os
-DATA = Path(_os.environ.get("SENTINEL_DATA_DIR", str(Path(__file__).resolve().parents[2] / "data" / "demo_properties")))
+import httpx
+
+SA_RESOURCE = "8cb8d6c9-93df-4c7a-b897-85793b21c60e"
+CKAN_URL = "https://data.sanantonio.gov/api/3/action/datastore_search"
 
 
 def run(params: dict) -> dict:
-    property_id = params.get("property_id")
-    f = DATA / f"{property_id}.json"
-    if not f.exists():
-        return {"job": "violations_lookup", "status": "data_unavailable",
-                "property_id": property_id, "data": None}
-    record = json.loads(f.read_text()).get("violations_lookup")
-    return {"job": "violations_lookup",
-            "status": "ok" if record is not None else "data_unavailable",
-            "property_id": property_id, "data": record}
+    city = params.get("city", "").strip().lower()
+    state = params.get("state", "").strip().upper()
+
+    if state != "TX" or city not in ("san antonio", ""):
+        return {
+            "job": "violations_lookup",
+            "status": "data_unavailable",
+            "reason": "SA Open Data covers San Antonio, TX only",
+            "data": None,
+        }
+
+    address = params.get("address", "")
+    try:
+        r = httpx.get(
+            CKAN_URL,
+            params={"resource_id": SA_RESOURCE, "q": address, "limit": 15},
+            timeout=15,
+        )
+        r.raise_for_status()
+        records = r.json()["result"]["records"]
+    except Exception as e:
+        return {
+            "job": "violations_lookup",
+            "status": "error",
+            "reason": str(e),
+            "data": None,
+        }
+
+    violations = [
+        {
+            "description": rec.get("VIOLATION_DESC") or rec.get("Description", ""),
+            "status": rec.get("STATUS") or rec.get("Status", ""),
+            "date_opened": rec.get("OPEN_DATE") or rec.get("DateOpened"),
+            "date_closed": rec.get("CLOSE_DATE") or rec.get("DateClosed"),
+            "case_number": rec.get("CASE_NUMBER") or rec.get("CaseNumber"),
+        }
+        for rec in records
+    ]
+
+    open_count = sum(
+        1
+        for v in violations
+        if (v.get("status") or "").lower() in ("open", "active", "")
+    )
+
+    return {
+        "job": "violations_lookup",
+        "status": "ok",
+        "data": {
+            "violations": violations,
+            "count": len(violations),
+            "open_count": open_count,
+        },
+    }
 
 
 if __name__ == "__main__":

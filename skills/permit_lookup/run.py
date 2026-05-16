@@ -1,20 +1,57 @@
-import json, sys
-from pathlib import Path
+import json
+import sys
 
-import os as _os
-DATA = Path(_os.environ.get("SENTINEL_DATA_DIR", str(Path(__file__).resolve().parents[2] / "data" / "demo_properties")))
+import httpx
+
+SA_RESOURCE = "c21106f9-3ef5-4f3a-8604-f992b4db7512"
+CKAN_URL = "https://data.sanantonio.gov/api/3/action/datastore_search"
 
 
 def run(params: dict) -> dict:
-    property_id = params.get("property_id")
-    f = DATA / f"{property_id}.json"
-    if not f.exists():
-        return {"job": "permit_lookup", "status": "data_unavailable",
-                "property_id": property_id, "data": None}
-    record = json.loads(f.read_text()).get("permit_lookup")
-    return {"job": "permit_lookup",
-            "status": "ok" if record else "data_unavailable",
-            "property_id": property_id, "data": record}
+    city = params.get("city", "").strip().lower()
+    state = params.get("state", "").strip().upper()
+
+    if state != "TX" or city not in ("san antonio", ""):
+        return {
+            "job": "permit_lookup",
+            "status": "data_unavailable",
+            "reason": "SA Open Data covers San Antonio, TX only",
+            "data": None,
+        }
+
+    address = params.get("address", "")
+    try:
+        r = httpx.get(
+            CKAN_URL,
+            params={"resource_id": SA_RESOURCE, "q": address, "limit": 15},
+            timeout=15,
+        )
+        r.raise_for_status()
+        records = r.json()["result"]["records"]
+    except Exception as e:
+        return {
+            "job": "permit_lookup",
+            "status": "error",
+            "reason": str(e),
+            "data": None,
+        }
+
+    permits = [
+        {
+            "description": rec.get("WORK_DESC", ""),
+            "value": rec.get("JOB_VALUE"),
+            "date": rec.get("ISSUED_DATE"),
+            "status": rec.get("STATUS"),
+            "type": rec.get("PERMIT_TYPE"),
+        }
+        for rec in records
+    ]
+
+    return {
+        "job": "permit_lookup",
+        "status": "ok",
+        "data": {"permits": permits, "count": len(permits)},
+    }
 
 
 if __name__ == "__main__":

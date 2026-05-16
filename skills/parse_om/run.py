@@ -1,75 +1,115 @@
-import json, os, sys
+import json
+import os
+import re
+import sys
 from pathlib import Path
 
-DATA = Path(os.environ.get(
-    "SENTINEL_DATA_DIR",
-    str(Path(__file__).resolve().parents[2] / "data" / "demo_properties")
-))
+import pdfplumber
+from openai import OpenAI
 
-DEMO_MAP = {
-    "mccullough": "4123_mccullough",
-    "blanco": "7821_blanco",
-    "culebra": "2455_culebra",
-}
+NVIDIA_KEY = os.environ.get("NVIDIA_API_KEY", "")
 
-# Also match by address text found in a live-parsed PDF
-ADDRESS_MAP = {
-    "4123 mccullough": "4123_mccullough",
-    "7821 blanco": "7821_blanco",
-    "2455 culebra": "2455_culebra",
-}
+EXTRACT_PROMPT = """Extract the following fields from this real estate offering memorandum.
+Return ONLY valid JSON — no markdown fences, no commentary.
+
+Fields:
+- address: street address only (e.g. "4123 McCullough Ave")
+- city: city name
+- state: 2-letter state code (e.g. "TX")
+- zip: 5-digit zip as string
+- property_type: human-readable type (e.g. "Multifamily", "Retail Strip Center", "Mobile Home Park")
+- asset_class: one of ["multifamily", "commercial", "industrial", "retail", "office", "mobile_home_park", "other"]
+- units: integer count of residential/apartment units, null if commercial
+- asking_price: integer dollar amount (no commas/symbols), null if not stated
+- year_built: integer year, null if not stated
+
+OM Text:
+{text}"""
 
 
-def _parse_live(pdf_path: str) -> tuple[str | None, dict | None]:
-    """Returns (property_id_or_None, parsed_data_or_None)."""
-    try:
-        import pdfplumber
-        text = ""
-        with pdfplumber.open(pdf_path) as pdf:
-            for page in pdf.pages:
-                text += page.extract_text() or ""
-        text_lower = text.lower()
-        for addr_key, pid in ADDRESS_MAP.items():
-            if addr_key in text_lower:
-                return pid, None  # identified — use cached data
-        return None, {"raw_text": text[:2000],
-                      "note": "live parse — property_id unknown"}
-    except Exception:
-        return None, None
+def _extract_text(pdf_path: str) -> str:
+    text = ""
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages[:8]:
+            text += (page.extract_text() or "") + "\n"
+    return text.strip()
+
+
+def _call_llm(text: str) -> dict:
+    client = OpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=NVIDIA_KEY)
+    resp = client.chat.completions.create(
+        model="nvidia/nemotron-3-super-120b-a12b",
+        messages=[{"role": "user", "content": EXTRACT_PROMPT.format(text=text[:6000])}],
+        stream=False,
+        max_tokens=400,
+        temperature=0.1,
+    )
+    raw = (resp.choices[0].message.content or "").strip()
+    # Strip markdown fences if model wraps in ```json ... ```
+    raw = re.sub(r"^```(?:json)?\s*", "", raw)
+    raw = re.sub(r"\s*```$", "", raw)
+    return json.loads(raw.strip())
 
 
 def run(params: dict) -> dict:
     pdf_path = params.get("pdf_path", "")
-    path_lower = str(pdf_path).lower()
+    if not pdf_path or not Path(pdf_path).exists():
+        return {
+            "job": "parse_om",
+            "status": "error",
+            "data": None,
+            "reason": "PDF path not found",
+        }
 
-    # Fast path: keyword in filename/path
-    for keyword, property_id in DEMO_MAP.items():
-        if keyword in path_lower:
-            f = DATA / f"{property_id}.json"
-            if f.exists():
-                record = json.loads(f.read_text()).get("parse_om")
-                if record:
-                    record["property_id"] = property_id
-                    return {"job": "parse_om", "status": "ok",
-                            "property_id": property_id, "data": record}
+    try:
+        text = _extract_text(pdf_path)
+    except Exception as e:
+        return {
+            "job": "parse_om",
+            "status": "error",
+            "data": None,
+            "reason": f"PDF read error: {e}",
+        }
 
-    # Slow path: read the PDF and match by address
-    pid_from_text, live_data = _parse_live(pdf_path)
-    if pid_from_text:
-        f = DATA / f"{pid_from_text}.json"
-        if f.exists():
-            record = json.loads(f.read_text()).get("parse_om")
-            if record:
-                record["property_id"] = pid_from_text
-                return {"job": "parse_om", "status": "ok",
-                        "property_id": pid_from_text, "data": record}
+    if not text:
+        return {
+            "job": "parse_om",
+            "status": "error",
+            "data": None,
+            "reason": "No text extracted from PDF",
+        }
 
-    if live_data:
-        return {"job": "parse_om", "status": "ok",
-                "property_id": "unknown", "data": live_data}
+    try:
+        parsed = _call_llm(text)
+    except Exception as e:
+        return {
+            "job": "parse_om",
+            "status": "error",
+            "data": None,
+            "reason": f"LLM extraction error: {e}",
+        }
 
-    return {"job": "parse_om", "status": "data_unavailable",
-            "property_id": "unknown", "data": None}
+    data = {
+        "address": str(parsed.get("address", "")).strip(),
+        "city": str(parsed.get("city", "")).strip(),
+        "state": str(parsed.get("state", "")).strip().upper(),
+        "zip": str(parsed.get("zip", "")).strip(),
+        "property_type": str(parsed.get("property_type", "Unknown")).strip(),
+        "asset_class": str(parsed.get("asset_class", "other")).strip().lower(),
+        "units": parsed.get("units"),
+        "asking_price": parsed.get("asking_price"),
+        "year_built": parsed.get("year_built"),
+    }
+
+    if not data["address"] or not data["city"]:
+        return {
+            "job": "parse_om",
+            "status": "error",
+            "data": None,
+            "reason": "Could not extract address from OM",
+        }
+
+    return {"job": "parse_om", "status": "ok", "data": data}
 
 
 if __name__ == "__main__":

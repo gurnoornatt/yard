@@ -1,20 +1,111 @@
-import json, sys
-from pathlib import Path
+import json
+import os
+import sys
 
-import os as _os
-DATA = Path(_os.environ.get("SENTINEL_DATA_DIR", str(Path(__file__).resolve().parents[2] / "data" / "demo_properties")))
+import httpx
+
+ATTOM_KEY = os.environ.get("ATTOM_API_KEY", "")
+CENSUS_KEY = os.environ.get("CENSUS_API_KEY", "")
+ATTOM_BASE = "https://api.attomdata.com"
+CENSUS_BASE = "https://api.census.gov/data/2023/acs/acs5"
+
+CENSUS_VARS = "B25003_001E,B25003_003E,B25064_001E,B25002_001E,B25002_003E"
+
+
+def _attom_headers() -> dict:
+    return {"apikey": ATTOM_KEY, "accept": "application/json"}
+
+
+def _get_comps(address: str, city: str, state: str, zip_: str) -> list:
+    address2 = f"{city}, {state} {zip_}".strip(", ")
+    try:
+        r = httpx.get(
+            f"{ATTOM_BASE}/v4/sale/snapshot",
+            params={"address1": address, "address2": address2, "radius": "1.0"},
+            headers=_attom_headers(),
+            timeout=20,
+        )
+        r.raise_for_status()
+        sales = r.json().get("property") or []
+        comps = []
+        for s in sales[:10]:
+            sale = s.get("sale") or {}
+            loc = s.get("address") or {}
+            comps.append(
+                {
+                    "address": loc.get("oneline", ""),
+                    "sale_price": sale.get("saleamt") or sale.get("saleamount"),
+                    "sale_date": sale.get("salesearchdate") or sale.get("saledate"),
+                    "property_type": s.get("summary", {}).get("proptype", ""),
+                }
+            )
+        return comps
+    except Exception:
+        return []
+
+
+def _get_market(zip_: str) -> dict:
+    if not zip_ or not CENSUS_KEY:
+        return {}
+    try:
+        r = httpx.get(
+            CENSUS_BASE,
+            params={
+                "get": f"NAME,{CENSUS_VARS}",
+                "for": f"zip code tabulation area:{zip_}",
+                "key": CENSUS_KEY,
+            },
+            timeout=15,
+        )
+        r.raise_for_status()
+        rows = r.json()
+        if len(rows) < 2:
+            return {}
+        header, values = rows[0], rows[1]
+        d = dict(zip(header, values))
+
+        total_occupied = int(d.get("B25003_001E") or 0)
+        renter_occ = int(d.get("B25003_003E") or 0)
+        total_units = int(d.get("B25002_001E") or 1)
+        vacant = int(d.get("B25002_003E") or 0)
+        median_rent = int(d.get("B25064_001E") or 0)
+
+        return {
+            "median_rent": median_rent,
+            "renter_pct": round(renter_occ / total_occupied * 100, 1)
+            if total_occupied
+            else None,
+            "vacancy_pct": round(vacant / total_units * 100, 1)
+            if total_units
+            else None,
+            "zip": zip_,
+        }
+    except Exception:
+        return {}
 
 
 def run(params: dict) -> dict:
-    property_id = params.get("property_id")
-    f = DATA / f"{property_id}.json"
-    if not f.exists():
-        return {"job": "comps_lookup", "status": "data_unavailable",
-                "property_id": property_id, "data": None}
-    record = json.loads(f.read_text()).get("comps_lookup")
-    return {"job": "comps_lookup",
-            "status": "ok" if record else "data_unavailable",
-            "property_id": property_id, "data": record}
+    address = params.get("address", "")
+    city = params.get("city", "")
+    state = params.get("state", "")
+    zip_ = params.get("zip", "")
+
+    if not address:
+        return {
+            "job": "comps_lookup",
+            "status": "data_unavailable",
+            "reason": "No address available",
+            "data": None,
+        }
+
+    comps = _get_comps(address, city, state, zip_)
+    market = _get_market(zip_)
+
+    return {
+        "job": "comps_lookup",
+        "status": "ok",
+        "data": {"comps": comps, "comp_count": len(comps), "market": market},
+    }
 
 
 if __name__ == "__main__":
