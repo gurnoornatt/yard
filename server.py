@@ -1,9 +1,11 @@
 import asyncio
 import importlib.util
 import json
+import logging
 import os
 import re
 import tempfile
+import time
 from pathlib import Path
 from typing import AsyncGenerator
 
@@ -12,6 +14,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from openai import OpenAI
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%H:%M:%S",
+)
+log = logging.getLogger("sentinel")
 
 app = FastAPI()
 app.add_middleware(
@@ -69,18 +78,18 @@ def _slug(address: str, zip_: str) -> str:
     return f"{clean}_{zip_}" if zip_ else clean
 
 
-SYNTHESIS_PROMPT = """You are Sentinel, an autonomous real estate acquisition analyst.
+SYNTHESIS_PROMPT = """You are Sentinel, an autonomous real estate acquisition analyst. Output ONLY the 6 sections below — no preamble, no thinking, no meta-commentary. Begin immediately with "## Property Snapshot".
 
 Using ONLY the research data below, write a concise 6-section analysis.
 Each section: 2-4 sentences. Direct, factual, cite specific numbers. No marketing language.
-If a data source shows "data_unavailable", note it briefly and move on.
+If a data source shows "data_unavailable" or null, note it briefly and move on.
 
 {asset_class_note}
 
 Research data:
 {research_json}
 
-Write exactly these 6 sections:
+Write exactly these 6 sections (start NOW with ## Property Snapshot):
 
 ## Property Snapshot
 [address, property type, units if applicable, year built, asking price, appraised value]
@@ -108,12 +117,15 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
     ctx: dict = {}  # address context, grows as skills complete
     all_data: dict = {}
     property_id = "upload"
+    pipeline_start = time.time()
+    log.info("=== ANALYSIS START: %s (%d bytes) ===", filename, len(pdf_bytes))
 
     for skill_name in SKILL_SEQUENCE:
         yield sse(
             "skill_start", {"skill": skill_name, "label": SKILL_LABELS[skill_name]}
         )
         await asyncio.sleep(0)
+        skill_start = time.time()
 
         try:
             if skill_name == "parse_om":
@@ -146,18 +158,25 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
                     if data.get("maturity_date"):
                         ctx["deed_maturity_date"] = data["maturity_date"]
 
+            elapsed = round(time.time() - skill_start, 2)
+            status = result.get("status", "ok")
+            log.info("  ✓ %s [%s] %.2fs", skill_name, status, elapsed)
+            if status not in ("ok",):
+                log.info("    reason: %s", result.get("reason", "—"))
+
             all_data[skill_name] = result.get("data")
             yield sse(
                 "skill_complete",
                 {
                     "skill": skill_name,
-                    "status": result.get("status", "ok"),
+                    "status": status,
                     "data": result.get("data"),
                     "property_id": property_id,
                 },
             )
 
         except Exception as e:
+            log.error("  ✗ %s EXCEPTION: %s", skill_name, e)
             yield sse("skill_error", {"skill": skill_name, "error": str(e)})
 
         await asyncio.sleep(0.05)
@@ -191,6 +210,7 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
     )
 
     yield sse("synthesis_start", {"label": "Writing analysis..."})
+    log.info("  → synthesis starting (property_id=%s)", property_id)
 
     full_text = ""
     verdict = "UNKNOWN"
@@ -204,9 +224,11 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
             model="nvidia/nemotron-3-super-120b-a12b",
             messages=[{"role": "user", "content": prompt}],
             stream=True,
-            max_tokens=1200,
+            max_tokens=3000,
         )
         for chunk in stream:
+            if not chunk.choices:
+                continue
             delta = chunk.choices[0].delta.content or ""
             full_text += delta
             yield sse("synthesis_chunk", {"text": delta})
@@ -218,8 +240,11 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
                 break
 
     except Exception as e:
+        log.error("  ✗ synthesis EXCEPTION: %s", e)
         yield sse("synthesis_chunk", {"text": f"\n\n[Synthesis error: {e}]"})
 
+    total = round(time.time() - pipeline_start, 1)
+    log.info("=== ANALYSIS DONE: verdict=%s total=%.1fs ===", verdict, total)
     yield sse("verdict", {"recommendation": verdict, "full_text": full_text})
     yield sse("done", {})
 
@@ -228,6 +253,7 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
 async def analyze(file: UploadFile = File(...)):
     contents = await file.read()
     filename = file.filename or "upload.pdf"
+    log.info("POST /analyze — file=%s size=%d", filename, len(contents))
     return StreamingResponse(
         run_analysis(contents, filename),
         media_type="text/event-stream",

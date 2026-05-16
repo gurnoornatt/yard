@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { DemoView } from './components/DemoView'
 import { IngestionView } from './components/IngestionView'
 import { LiveIngestionView } from './components/LiveIngestionView'
+// AnalysisView is available but currently IngestionView handles live analysis display
 import type { AnalysisState, Verdict } from './types'
 
 export const SKILL_ORDER = [

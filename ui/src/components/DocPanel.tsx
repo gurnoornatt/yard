@@ -32,7 +32,7 @@ function DocPlaceholder({ isAnalyzing }: { isAnalyzing: boolean }) {
   )
 }
 
-export function DocPanel({ file, propertyData, isAnalyzing }: {
+export function DocPanel({ file, propertyData: _propertyData, isAnalyzing }: {
   file: File | null
   propertyData: Record<string, unknown> | undefined
   isAnalyzing: boolean

@@ -56,45 +56,44 @@ function finding(skill: string, data: Record<string, unknown>): string | null {
       return [u && u + ' units', y, p && '$' + (p / 1e6).toFixed(1) + 'M ask'].filter(Boolean).join(' · ') || null
     }
     case 'owner_lookup': {
-      const llc  = String(data.llc_name ?? '—')
-      const hold = data.hold_period_years as number | undefined
-      const oos  = data.owner_state && data.owner_state !== 'TX'
-      return [llc, hold && hold + 'yr hold', oos && 'out-of-state (' + data.owner_state + ')'].filter(Boolean).join(' · ')
+      const name = String(data.owner_name ?? '—')
+      const oos  = data.out_of_state as boolean | undefined
+      return [name, oos && 'out-of-state (' + data.owner_state + ')'].filter(Boolean).join(' · ')
     }
     case 'deed_lookup': {
-      const loans = data.loans as Array<Record<string, unknown>> | undefined
-      const loan  = loans?.[0]
-      if (!loan) return 'No loans on record'
-      const past = String(loan.note ?? '').toLowerCase().includes('past due')
-      const amt  = loan.loan_amount ? '$' + (Number(loan.loan_amount) / 1e6).toFixed(1) + 'M' : '—'
-      return [String(loan.lender ?? '—'), amt, past ? 'PAST DUE ⚠' : 'matures ' + String(loan.estimated_maturity ?? '—')].join(' · ')
+      const lender = data.lender ? String(data.lender) : null
+      const amt    = data.loan_amount ? '$' + (Number(data.loan_amount) / 1e6).toFixed(1) + 'M loan' : null
+      const mat    = data.maturity_date ? 'matures ' + String(data.maturity_date) : null
+      return [lender, amt, mat].filter(Boolean).join(' · ') || 'No deed data'
     }
     case 'tax_lookup':
       return data.delinquent
-        ? 'Delinquent · $' + Number(data.delinquency_amount).toLocaleString() + ' owed'
-        : 'Current · appraised $' + (data.appraised_value ? (Number(data.appraised_value) / 1e6).toFixed(1) + 'M' : '—')
+        ? 'Delinquent · ' + String(data.total_due ?? 'amount unknown') + ' owed'
+        : 'Taxes current'
     case 'violations_lookup': {
-      const n = (data.open_violations as number) ?? 0
+      const n = (data.open_count as number) ?? 0
       return n > 0 ? n + ' open violation' + (n > 1 ? 's' : '') : 'No open violations'
     }
     case 'comps_lookup': {
-      const avg = data.avg_price_per_unit as number | undefined
-      return avg ? 'Avg $' + (avg / 1000).toFixed(0) + 'k/unit · ' + String(data.rent_trend ?? '—') + ' trend' : null
+      const market = data.market as Record<string, unknown> | undefined
+      const rent   = market?.median_rent ? '$' + Number(market.median_rent).toLocaleString() + '/mo median rent' : null
+      const vac    = market?.vacancy_pct != null ? market.vacancy_pct + '% vacancy' : null
+      return [rent, vac].filter(Boolean).join(' · ') || null
     }
     case 'permit_lookup': {
-      const n = (data.permits as Array<unknown> | undefined)?.length ?? 0
+      const n = (data.count as number) ?? (data.permits as Array<unknown> | undefined)?.length ?? 0
       return n + ' permit' + (n !== 1 ? 's' : '') + ' on file'
     }
     case 'portfolio_crawler': {
-      const n = (data.other_properties as Array<unknown> | undefined)?.length ?? 0
-      return n + ' other propert' + (n !== 1 ? 'ies' : 'y') + ' in portfolio'
+      const n = (data.property_count as number) ?? (data.properties as Array<unknown> | undefined)?.length ?? 0
+      return n + ' propert' + (n !== 1 ? 'ies' : 'y') + ' in portfolio'
     }
     case 'maturity_estimator': {
-      const m = data.months_to_maturity as number | undefined
+      const m = data.months_remaining as number | undefined
       if (m === undefined) return null
       return m < 0
         ? Math.abs(m) + ' months past due — high refi pressure'
-        : m + ' months to maturity'
+        : m + ' months to maturity · ' + String(data.pressure_level ?? '')
     }
     case 'synthesize_analysis':
       return 'Compiling analysis brief…'

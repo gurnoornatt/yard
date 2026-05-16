@@ -1,10 +1,11 @@
 import { motion } from 'framer-motion'
 import type { Verdict } from '../types'
 
-const VERDICT_CONFIG = {
+const VERDICT_CONFIG: Record<string, { label: string; bg: string; color: string; border: string }> = {
   PURSUE:    { label: 'PURSUE',    bg: 'var(--green-bg)',  color: 'var(--green)',  border: '#86efac' },
   WATCHLIST: { label: 'WATCHLIST', bg: 'var(--amber-bg)', color: 'var(--amber)', border: '#fcd34d' },
   PASS:      { label: 'PASS',      bg: 'var(--red-bg)',   color: 'var(--red)',   border: '#fca5a5' },
+  UNKNOWN:   { label: 'UNKNOWN',   bg: 'rgba(100,116,139,0.1)', color: '#64748b', border: '#64748b' },
 }
 
 function renderSynthesis(text: string) {

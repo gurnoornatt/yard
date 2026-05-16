@@ -5,7 +5,7 @@ import { SynthesisPanel } from './SynthesisPanel'
 import type { AnalysisState } from '../types'
 import { SKILL_ORDER } from '../App'
 
-export function AnalysisView({ state, file, onReset, isAnalyzing }: {
+export function AnalysisView({ state, file, onReset: _onReset, isAnalyzing }: {
   state: AnalysisState
   file: File | null
   onReset: () => void

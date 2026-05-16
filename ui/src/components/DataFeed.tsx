@@ -42,35 +42,31 @@ function DataRow({ k, v, flag }: { k: string; v: string; flag?: { text: string; 
 function SkillData({ name, data }: { name: string; data: Record<string, unknown> }) {
   if (name === 'parse_om') return (
     <>
-      <DataRow k="Broker" v={String(data.broker ?? '—')} />
       <DataRow k="Asset class" v={String(data.asset_class ?? '—')} />
+      <DataRow k="Property type" v={String(data.property_type ?? '—')} />
+      {data.year_built && <DataRow k="Year built" v={String(data.year_built)} />}
     </>
   )
   if (name === 'owner_lookup') {
-    const hold = data.hold_period_years as number | undefined
-    const oos = data.owner_state && data.owner_state !== 'TX'
+    const oos = data.out_of_state as boolean | undefined
     return (
       <>
-        <DataRow k="Entity" v={String(data.llc_name ?? '—')} />
-        <DataRow k="Principal" v={String(data.principal ?? '—')} />
-        <DataRow k="Hold period" v={hold ? `${hold} yrs` : '—'}
-          flag={hold && hold > 8 ? { text: 'Tired landlord signal', type: 'warn' } : undefined} />
+        <DataRow k="Owner" v={String(data.owner_name ?? '—')} />
+        <DataRow k="Address" v={String(data.owner_address ?? '—')} />
         {oos && <DataRow k="Owner state" v={String(data.owner_state)} flag={{ text: `Out-of-state (${data.owner_state})`, type: 'warn' }} />}
       </>
     )
   }
   if (name === 'deed_lookup') {
-    const loans = data.loans as Array<Record<string, unknown>> | undefined
-    const loan = loans?.[0]
-    if (!loan) return <DataRow k="Loans" v="None recorded" />
-    const pastDue = String(loan.note ?? '').includes('past due') || String(loan.note ?? '').includes('PAST DUE')
+    const maturity = data.maturity_date as string | undefined
     return (
       <>
-        <DataRow k="Lender" v={String(loan.lender ?? '—')} />
-        <DataRow k="Loan amount" v={loan.loan_amount ? `$${Number(loan.loan_amount).toLocaleString()}` : '—'} />
-        <DataRow k="Maturity" v={String(loan.estimated_maturity ?? '—')}
-          flag={pastDue ? { text: 'PAST DUE — forced seller', type: 'warn' } : undefined} />
-        <DataRow k="Type" v={loan.is_cmbs ? 'CMBS' : String(loan.lender_type ?? 'conventional')} />
+        <DataRow k="Lender" v={String(data.lender ?? '—')} />
+        <DataRow k="Loan amount" v={data.loan_amount ? `$${Number(data.loan_amount).toLocaleString()}` : '—'} />
+        <DataRow k="Originated" v={String(data.origination_date ?? '—')} />
+        <DataRow k="Maturity" v={maturity || 'N/A'} />
+        <DataRow k="Last sale" v={data.last_sale_price ? `$${Number(data.last_sale_price).toLocaleString()}` : '—'} />
+        <DataRow k="Appraised" v={data.appraised_value ? `$${Number(data.appraised_value).toLocaleString()}` : '—'} />
       </>
     )
   }
@@ -79,15 +75,15 @@ function SkillData({ name, data }: { name: string; data: Record<string, unknown>
     return (
       <>
         <DataRow k="Status" v={String(data.status ?? '—')}
-          flag={delinquent ? { text: `$${Number(data.delinquency_amount).toLocaleString()} owed`, type: 'warn' } : { text: 'Current', type: 'ok' }} />
-        <DataRow k="Appraised" v={data.appraised_value ? `$${Number(data.appraised_value).toLocaleString()}` : '—'} />
-        <DataRow k="Annual taxes" v={data.annual_taxes ? `$${Number(data.annual_taxes).toLocaleString()}` : '—'} />
+          flag={delinquent ? { text: `${data.total_due ?? 'Amount unknown'} owed`, type: 'warn' } : { text: 'Current', type: 'ok' }} />
+        {data.tax_year && <DataRow k="Tax year" v={String(data.tax_year)} />}
+        {data.total_due && <DataRow k="Total due" v={String(data.total_due)} />}
       </>
     )
   }
   if (name === 'violations_lookup') {
-    const open = data.open_violations as number ?? 0
-    const total = data.total_violations as number ?? 0
+    const open = (data.open_count as number) ?? 0
+    const total = (data.count as number) ?? 0
     return (
       <>
         <DataRow k="Open violations" v={String(open)}
@@ -97,41 +93,45 @@ function SkillData({ name, data }: { name: string; data: Record<string, unknown>
     )
   }
   if (name === 'comps_lookup') {
-    const avg = data.avg_price_per_unit as number | undefined
-    const comps = data.comps as Array<Record<string, unknown>> | undefined
+    const market = data.market as Record<string, unknown> | undefined
+    const comps = data.comps as Array<unknown> | undefined
     return (
       <>
-        <DataRow k="Avg / unit" v={avg ? `$${Number(avg).toLocaleString()}` : '—'} />
-        <DataRow k="Comps found" v={comps ? `${comps.length}` : '—'} />
-        <DataRow k="Vacancy" v={data.submarket_vacancy ? `${(Number(data.submarket_vacancy) * 100).toFixed(0)}%` : '—'} />
-        <DataRow k="Rent trend" v={String(data.rent_trend ?? '—')} />
+        <DataRow k="Comps found" v={String(data.comp_count ?? comps?.length ?? '0')} />
+        <DataRow k="Median rent" v={market?.median_rent ? `$${Number(market.median_rent).toLocaleString()}/mo` : '—'} />
+        <DataRow k="Vacancy" v={market?.vacancy_pct != null ? `${market.vacancy_pct}%` : '—'} />
+        <DataRow k="Renter %" v={market?.renter_pct != null ? `${market.renter_pct}%` : '—'} />
       </>
     )
   }
   if (name === 'portfolio_crawler') {
-    const others = data.other_properties as Array<unknown> | undefined
+    const props = data.properties as Array<unknown> | undefined
     return (
       <>
-        <DataRow k="Other properties" v={others ? String(others.length) : '0'} />
-        <DataRow k="Total units" v={String(data.total_units_in_portfolio ?? '—')} />
+        <DataRow k="Properties found" v={String(data.property_count ?? props?.length ?? '0')} />
+        <DataRow k="Owner" v={String(data.owner_name ?? '—')} />
       </>
     )
   }
   if (name === 'maturity_estimator') {
-    const months = data.months_to_maturity as number | undefined
-    const pressure = String(data.refi_pressure ?? '')
+    const months = data.months_remaining as number | undefined
+    const pressure = String(data.pressure_level ?? '')
     const pastDue = months !== undefined && months < 0
     return (
       <>
-        <DataRow k="Months to maturity" v={pastDue ? `${Math.abs(months!)} mo PAST DUE` : `${months} mo`}
+        <DataRow k="Months remaining" v={pastDue ? `${Math.abs(months!)} mo PAST DUE` : `${months ?? '—'} mo`}
           flag={pastDue ? { text: 'High refi pressure', type: 'warn' } : undefined} />
         <DataRow k="Pressure level" v={pressure.toUpperCase()} />
+        {data.interpretation && <DataRow k="Signal" v={String(data.interpretation)} />}
       </>
     )
   }
   if (name === 'permit_lookup') {
-    const permits = data.permits as Array<Record<string, unknown>> | undefined
-    return <DataRow k="Permits on file" v={permits ? `${permits.length}` : '0'} />
+    const permits = data.permits as Array<unknown> | undefined
+    return <DataRow k="Permits on file" v={String(data.count ?? permits?.length ?? '0')} />
+  }
+  if (name === 'synthesize_analysis') {
+    return <DataRow k="Status" v={data.ready ? 'Research complete — writing analysis' : '—'} />
   }
   return null
 }
@@ -188,7 +188,7 @@ function SkillCard({ skill }: { skill: SkillState }) {
   )
 }
 
-export function DataFeed({ skills, isAnalyzing }: { skills: SkillState[]; isAnalyzing: boolean }) {
+export function DataFeed({ skills, isAnalyzing: _isAnalyzing }: { skills: SkillState[]; isAnalyzing: boolean }) {
   return (
     <div>
       <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-3)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 16 }}>
