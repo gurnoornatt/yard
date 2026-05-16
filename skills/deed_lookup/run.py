@@ -5,11 +5,11 @@ import sys
 import httpx
 
 ATTOM_KEY = os.environ.get("ATTOM_API_KEY", "")
-ATTOM_BASE = "https://api.attomdata.com"
+ATTOM_BASE = "https://api.gateway.attomdata.com/propertyapi/v1.0.0"
 
 
 def _headers() -> dict:
-    return {"apikey": ATTOM_KEY, "accept": "application/json"}
+    return {"APIKey": ATTOM_KEY, "Accept": "application/json"}
 
 
 def run(params: dict) -> dict:
@@ -30,7 +30,7 @@ def run(params: dict) -> dict:
 
     try:
         r = httpx.get(
-            f"{ATTOM_BASE}/v4/property/detail",
+            f"{ATTOM_BASE}/property/expandedprofile",
             params={"address1": address, "address2": address2},
             headers=_headers(),
             timeout=20,
@@ -50,31 +50,29 @@ def run(params: dict) -> dict:
         }
 
     prop = props[0]
-
-    # Extract mortgage/deed info — ATTOM nests differently per account tier
-    mort = prop.get("mortgage") or {}
-    sale = prop.get("sale") or {}
     assessment = prop.get("assessment") or {}
+    sale = prop.get("sale") or {}
 
-    # Primary loan fields
-    lender = (
-        mort.get("lender1fullname")
-        or mort.get("lenderName")
-        or sale.get("lenderName", "")
-    )
-    loan_amount = mort.get("amount1stmortgage") or mort.get("loanAmount")
-    orig_date = mort.get("recordingdate1stmortgage") or mort.get("originationDate")
-    maturity_date = mort.get("duedate1stmortgage") or mort.get("maturityDate")
-    loan_type = mort.get("loantype1stmortgage") or mort.get("loanType", "")
+    # Mortgage lives inside assessment.mortgage.FirstConcurrent
+    mort = (assessment.get("mortgage") or {}).get("FirstConcurrent") or {}
 
-    # Last sale
-    last_sale_price = sale.get("saleamt") or sale.get("saleamount")
-    last_sale_date = sale.get("salesearchdate") or sale.get("saledate")
+    lender_first = mort.get("lenderFirstName", "")
+    lender_last = mort.get("lenderLastName", "")
+    lender = f"{lender_first} {lender_last}".strip() or None
+
+    loan_amount = mort.get("amount")
+    orig_date = mort.get("date")
+    maturity_date = mort.get("dueDate") or mort.get("duedate") or None
+    loan_type = mort.get("deedType") or mort.get("loanType") or None
+
+    # Sale data
+    sale_amt = sale.get("amount") or {}
+    last_sale_price = sale_amt.get("saleAmt")
+    last_sale_date = sale.get("saleTransDate") or sale.get("saleSearchDate")
 
     # Appraised value
-    appraised_value = (assessment.get("assessed") or {}).get(
-        "assdttlvalue"
-    ) or assessment.get("appraisedValue")
+    assessed = assessment.get("assessed") or {}
+    appraised_value = assessed.get("assdTtlValue")
 
     data = {
         "lender": lender,

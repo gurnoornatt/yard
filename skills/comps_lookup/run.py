@@ -6,21 +6,21 @@ import httpx
 
 ATTOM_KEY = os.environ.get("ATTOM_API_KEY", "")
 CENSUS_KEY = os.environ.get("CENSUS_API_KEY", "")
-ATTOM_BASE = "https://api.attomdata.com"
+ATTOM_BASE = "https://api.gateway.attomdata.com/propertyapi/v1.0.0"
 CENSUS_BASE = "https://api.census.gov/data/2023/acs/acs5"
 
 CENSUS_VARS = "B25003_001E,B25003_003E,B25064_001E,B25002_001E,B25002_003E"
 
 
 def _attom_headers() -> dict:
-    return {"apikey": ATTOM_KEY, "accept": "application/json"}
+    return {"APIKey": ATTOM_KEY, "Accept": "application/json"}
 
 
 def _get_comps(address: str, city: str, state: str, zip_: str) -> list:
     address2 = f"{city}, {state} {zip_}".strip(", ")
     try:
         r = httpx.get(
-            f"{ATTOM_BASE}/v4/sale/snapshot",
+            f"{ATTOM_BASE}/sale/snapshot",
             params={"address1": address, "address2": address2, "radius": "1.0"},
             headers=_attom_headers(),
             timeout=20,
@@ -30,12 +30,14 @@ def _get_comps(address: str, city: str, state: str, zip_: str) -> list:
         comps = []
         for s in sales[:10]:
             sale = s.get("sale") or {}
+            sale_amt = sale.get("amount") or {}
             loc = s.get("address") or {}
             comps.append(
                 {
-                    "address": loc.get("oneline", ""),
-                    "sale_price": sale.get("saleamt") or sale.get("saleamount"),
-                    "sale_date": sale.get("salesearchdate") or sale.get("saledate"),
+                    "address": loc.get("oneLine") or loc.get("oneline", ""),
+                    "sale_price": sale_amt.get("saleamt") or sale_amt.get("saleAmt"),
+                    "sale_date": sale.get("saleTransDate")
+                    or sale.get("salesearchdate"),
                     "property_type": s.get("summary", {}).get("proptype", ""),
                 }
             )
