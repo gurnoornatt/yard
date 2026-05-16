@@ -1,0 +1,160 @@
+{
+  "property_id": "7821_blanco",
+  "address": "7821 Blanco Rd, San Antonio, TX 78216",
+  "units": 48,
+  "year_built": 2005,
+  "asset_class": "Class B",
+  "asking_price": 9200000,
+  "price_per_unit": 191667,
+  "broker": "CBRE",
+  "broker_narrative": "Trophy Class B asset in the rapidly appreciating NW San Antonio corridor. Recent elevator modernization and institutional-quality management in place. Priced to reflect the premier location and recent capital investment.",
+
+  "parse_om": {
+    "address": "7821 Blanco Rd, San Antonio, TX 78216",
+    "units": 48,
+    "year_built": 2005,
+    "asking_price": 9200000,
+    "price_per_unit": 191667,
+    "broker_narrative": "Trophy Class B asset in the rapidly appreciating NW San Antonio corridor. Recent elevator modernization and institutional-quality management in place. Priced to reflect the premier location and recent capital investment.",
+    "asset_class": "Class B",
+    "broker": "CBRE"
+  },
+
+  "owner_lookup": {
+    "llc_name": "BLANCO HOLDINGS LLC",
+    "principal": "Maria Santos",
+    "mailing_address": "8800 Wurzbach Rd Ste 202, San Antonio, TX 78240",
+    "acquisition_date": "2023-11-30",
+    "hold_period_years": 2.1,
+    "is_entity": true,
+    "owner_state": "TX"
+  },
+
+  "deed_lookup": {
+    "loans": [
+      {
+        "lender": "Wells Fargo Commercial Mortgage",
+        "origination_date": "2023-12-10",
+        "loan_amount": 7500000,
+        "estimated_maturity": "2029-12-10",
+        "is_cmbs": true,
+        "lender_type": "cmbs",
+        "interest_rate_type": "fixed",
+        "note": "CMBS loan — prepayment penalty applies, no lender pressure until 2029"
+      }
+    ]
+  },
+
+  "permit_lookup": {
+    "permits": [
+      {
+        "permit_number": "2024-11-2201",
+        "type": "ELEVATOR - MODERNIZATION",
+        "date": "2024-11-05",
+        "value": 180000,
+        "status": "FINALED",
+        "is_new_construction": false
+      },
+      {
+        "permit_number": "2024-03-0887",
+        "type": "ELECTRICAL - PANEL UPGRADE",
+        "date": "2024-03-14",
+        "value": 42000,
+        "status": "FINALED",
+        "is_new_construction": false
+      }
+    ]
+  },
+
+  "tax_lookup": {
+    "status": "delinquent",
+    "appraised_value": 7800000,
+    "tax_year": 2025,
+    "annual_taxes": 117000,
+    "delinquent": true,
+    "delinquency_amount": 84320,
+    "delinquency_years": 2,
+    "delinquency_detail": "2023 and 2024 tax years unpaid. Bexar County tax lien recorded 2025-02-14."
+  },
+
+  "violations_lookup": {
+    "violations": [
+      {
+        "case_number": "2025-VIO-1104",
+        "type": "ELECTRICAL - OPEN JUNCTION BOX UNIT 14B",
+        "date_filed": "2025-03-02",
+        "status": "OPEN",
+        "resolution_date": null,
+        "fine": 500
+      },
+      {
+        "case_number": "2025-VIO-1209",
+        "type": "PLUMBING - SEWAGE LEAK COMMON AREA",
+        "date_filed": "2025-04-18",
+        "status": "OPEN",
+        "resolution_date": null,
+        "fine": 750
+      },
+      {
+        "case_number": "2024-VIO-3381",
+        "type": "EGRESS - EMERGENCY EXIT BLOCKED BLDG B",
+        "date_filed": "2024-12-05",
+        "status": "OPEN",
+        "resolution_date": null,
+        "fine": 1000
+      }
+    ],
+    "open_violations": 3,
+    "total_violations": 3
+  },
+
+  "comps_lookup": {
+    "submarket": "NW San Antonio / Blanco Corridor",
+    "comps": [
+      {
+        "address": "8102 Blanco Rd, San Antonio, TX 78216",
+        "units": 52,
+        "sale_date": "2025-09-08",
+        "sale_price": 9100000,
+        "price_per_unit": 175000,
+        "year_built": 2003
+      },
+      {
+        "address": "7401 Wurzbach Rd, San Antonio, TX 78240",
+        "units": 44,
+        "sale_date": "2025-06-21",
+        "sale_price": 8140000,
+        "price_per_unit": 185000,
+        "year_built": 2007
+      },
+      {
+        "address": "6900 N Loop 1604 W, San Antonio, TX 78249",
+        "units": 60,
+        "sale_date": "2026-02-10",
+        "sale_price": 10200000,
+        "price_per_unit": 170000,
+        "year_built": 2004
+      }
+    ],
+    "avg_price_per_unit": 176667,
+    "rent_trend": "softening",
+    "submarket_vacancy": 0.09
+  },
+
+  "portfolio_crawler": {
+    "entity": "BLANCO HOLDINGS LLC",
+    "principal": "Maria Santos",
+    "other_properties": [],
+    "total_units_in_portfolio": 48,
+    "total_portfolio_value_approx": 9200000,
+    "note": "Single-asset entity. No other recorded TX properties under this LLC or principal."
+  },
+
+  "maturity_estimator": {
+    "loan_maturity": "2029-12-10",
+    "months_to_maturity": 43,
+    "maturity_status": "healthy",
+    "refi_pressure": "low",
+    "note": "CMBS loan has 43 months remaining. No refinance pressure. Prepayment penalty makes early exit expensive. Seller not motivated by loan situation."
+  }
+}

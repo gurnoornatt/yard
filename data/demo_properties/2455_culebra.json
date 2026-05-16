@@ -1,0 +1,132 @@
+{
+  "property_id": "2455_culebra",
+  "address": "2455 Culebra Rd, San Antonio, TX 78228",
+  "units": 24,
+  "year_built": 1988,
+  "asset_class": "Class C",
+  "asking_price": 3100000,
+  "price_per_unit": 129167,
+  "broker": "Whitestone Real Estate",
+  "broker_narrative": "Solid West Side cash-flowing asset with stable tenancy and recent roof replacement. Owner retiring after 6 years of stewardship. Priced for a quick close.",
+
+  "parse_om": {
+    "address": "2455 Culebra Rd, San Antonio, TX 78228",
+    "units": 24,
+    "year_built": 1988,
+    "asking_price": 3100000,
+    "price_per_unit": 129167,
+    "broker_narrative": "Solid West Side cash-flowing asset with stable tenancy and recent roof replacement. Owner retiring after 6 years of stewardship. Priced for a quick close.",
+    "asset_class": "Class C",
+    "broker": "Whitestone Real Estate"
+  },
+
+  "owner_lookup": {
+    "llc_name": "CULEBRA PROPERTIES LLC",
+    "principal": "David Kim",
+    "mailing_address": "3300 Nacogdoches Rd, San Antonio, TX 78217",
+    "acquisition_date": "2019-09-15",
+    "hold_period_years": 6.6,
+    "is_entity": true,
+    "owner_state": "TX"
+  },
+
+  "deed_lookup": {
+    "loans": [
+      {
+        "lender": "Broadway Bank",
+        "origination_date": "2019-09-20",
+        "loan_amount": 2800000,
+        "estimated_maturity": "2024-09-20",
+        "is_cmbs": false,
+        "lender_type": "community_bank",
+        "interest_rate_type": "fixed",
+        "note": "Loan matured September 2024. No new deed of trust recorded — status unclear. May have been extended, refi'd quietly, or in workout. Warrants verification before LOI."
+      }
+    ]
+  },
+
+  "permit_lookup": {
+    "permits": [
+      {
+        "permit_number": "2024-06-0774",
+        "type": "ROOFING - COMPLETE REPLACEMENT",
+        "date": "2024-06-22",
+        "value": 38000,
+        "status": "FINALED",
+        "is_new_construction": false
+      }
+    ]
+  },
+
+  "tax_lookup": {
+    "status": "current",
+    "appraised_value": 2640000,
+    "tax_year": 2025,
+    "annual_taxes": 39600,
+    "delinquent": false,
+    "delinquency_amount": null,
+    "delinquency_years": 0
+  },
+
+  "violations_lookup": {
+    "violations": [],
+    "open_violations": 0,
+    "total_violations": 0
+  },
+
+  "comps_lookup": {
+    "submarket": "West San Antonio / Culebra Corridor",
+    "comps": [
+      {
+        "address": "2201 Culebra Rd, San Antonio, TX 78228",
+        "units": 20,
+        "sale_date": "2025-10-03",
+        "sale_price": 2500000,
+        "price_per_unit": 125000,
+        "year_built": 1985
+      },
+      {
+        "address": "3102 W Commerce St, San Antonio, TX 78207",
+        "units": 28,
+        "sale_date": "2025-07-17",
+        "sale_price": 3640000,
+        "price_per_unit": 130000,
+        "year_built": 1990
+      },
+      {
+        "address": "1800 Castroville Rd, San Antonio, TX 78237",
+        "units": 22,
+        "sale_date": "2026-03-05",
+        "sale_price": 2904000,
+        "price_per_unit": 132000,
+        "year_built": 1987
+      }
+    ],
+    "avg_price_per_unit": 129000,
+    "rent_trend": "stable",
+    "submarket_vacancy": 0.07
+  },
+
+  "portfolio_crawler": {
+    "entity": "CULEBRA PROPERTIES LLC",
+    "principal": "David Kim",
+    "other_properties": [
+      {
+        "address": "4410 Fredericksburg Rd, San Antonio, TX 78201",
+        "units": 16,
+        "acquisition_date": "2021-03-08",
+        "appraised_value": 1680000
+      }
+    ],
+    "total_units_in_portfolio": 40,
+    "total_portfolio_value_approx": 4780000
+  },
+
+  "maturity_estimator": {
+    "loan_maturity": "2024-09-20",
+    "months_to_maturity": -8,
+    "maturity_status": "past_due",
+    "refi_pressure": "medium",
+    "note": "Broadway Bank loan matured September 2024 — 8 months past due with no new deed recorded. Status ambiguous: could be extended or in quiet workout. Asking price aligns with comps, but loan situation needs verification before committing."
+  }
+}

@@ -1,0 +1,155 @@
+{
+  "property_id": "4123_mccullough",
+  "address": "4123 McCullough Ave, San Antonio, TX 78212",
+  "units": 32,
+  "year_built": 1972,
+  "asset_class": "Class C",
+  "asking_price": 4800000,
+  "price_per_unit": 150000,
+  "broker": "Marcus & Millichap",
+  "broker_narrative": "Rare value-add opportunity in the Heart of San Antonio. Well-maintained 32-unit garden-style community with strong occupancy and below-market rents offering immediate upside through light renovation and rent optimization.",
+
+  "parse_om": {
+    "address": "4123 McCullough Ave, San Antonio, TX 78212",
+    "units": 32,
+    "year_built": 1972,
+    "asking_price": 4800000,
+    "price_per_unit": 150000,
+    "broker_narrative": "Rare value-add opportunity in the Heart of San Antonio. Well-maintained 32-unit garden-style community with strong occupancy and below-market rents offering immediate upside through light renovation and rent optimization.",
+    "asset_class": "Class C",
+    "broker": "Marcus & Millichap"
+  },
+
+  "owner_lookup": {
+    "llc_name": "MCCULLOUGH ARMS LLC",
+    "principal": "Robert Chen",
+    "mailing_address": "1234 Greenwich St, New Haven, CT 06511",
+    "acquisition_date": "2014-11-03",
+    "hold_period_years": 11.5,
+    "is_entity": true,
+    "owner_state": "CT"
+  },
+
+  "deed_lookup": {
+    "loans": [
+      {
+        "lender": "Frost Bank",
+        "origination_date": "2021-03-15",
+        "loan_amount": 8200000,
+        "estimated_maturity": "2026-03-15",
+        "is_cmbs": false,
+        "lender_type": "regional_bank",
+        "interest_rate_type": "fixed",
+        "note": "Loan maturity March 2026 — already past due as of analysis date"
+      }
+    ]
+  },
+
+  "permit_lookup": {
+    "permits": [
+      {
+        "permit_number": "2025-04-1287",
+        "type": "PLUMBING - INTERIOR",
+        "date": "2025-04-12",
+        "value": 45000,
+        "status": "FINALED",
+        "is_new_construction": false
+      },
+      {
+        "permit_number": "2022-09-4431",
+        "type": "HVAC - REPLACEMENT",
+        "date": "2022-09-01",
+        "value": 28000,
+        "status": "FINALED",
+        "is_new_construction": false
+      }
+    ]
+  },
+
+  "tax_lookup": {
+    "status": "current",
+    "appraised_value": 3920000,
+    "tax_year": 2025,
+    "annual_taxes": 58800,
+    "delinquent": false,
+    "delinquency_amount": null,
+    "delinquency_years": 0
+  },
+
+  "violations_lookup": {
+    "violations": [
+      {
+        "case_number": "2024-VIO-0892",
+        "type": "WINDOW SCREENS - MISSING/DAMAGED",
+        "date_filed": "2024-07-18",
+        "status": "CLOSED",
+        "resolution_date": "2024-08-30",
+        "fine": 250
+      }
+    ],
+    "open_violations": 0,
+    "total_violations": 1
+  },
+
+  "comps_lookup": {
+    "submarket": "Midtown San Antonio",
+    "comps": [
+      {
+        "address": "3908 N St Mary's St, San Antonio, TX 78212",
+        "units": 28,
+        "sale_date": "2025-11-14",
+        "sale_price": 4480000,
+        "price_per_unit": 160000,
+        "year_built": 1968
+      },
+      {
+        "address": "4501 McCullough Ave, San Antonio, TX 78212",
+        "units": 36,
+        "sale_date": "2025-08-02",
+        "sale_price": 5544000,
+        "price_per_unit": 154000,
+        "year_built": 1975
+      },
+      {
+        "address": "310 W Josephine St, San Antonio, TX 78212",
+        "units": 24,
+        "sale_date": "2026-01-22",
+        "sale_price": 3720000,
+        "price_per_unit": 155000,
+        "year_built": 1970
+      }
+    ],
+    "avg_price_per_unit": 156333,
+    "rent_trend": "stable",
+    "submarket_vacancy": 0.06
+  },
+
+  "portfolio_crawler": {
+    "entity": "MCCULLOUGH ARMS LLC",
+    "principal": "Robert Chen",
+    "other_properties": [
+      {
+        "address": "7702 Blanco Rd Unit Portfolio, San Antonio, TX 78216",
+        "units": 18,
+        "acquisition_date": "2016-04-20",
+        "appraised_value": 2100000
+      },
+      {
+        "address": "1102 Culebra Rd, San Antonio, TX 78201",
+        "units": 12,
+        "acquisition_date": "2017-08-11",
+        "appraised_value": 1350000
+      }
+    ],
+    "total_units_in_portfolio": 62,
+    "total_portfolio_value_approx": 7370000
+  },
+
+  "maturity_estimator": {
+    "loan_maturity": "2026-03-15",
+    "months_to_maturity": -2,
+    "maturity_status": "past_due",
+    "refi_pressure": "high",
+    "note": "Frost Bank regional loan matured March 2026 — owner in holdover, likely under lender pressure to sell or refi. Classic forced-seller signal."
+  }
+}
