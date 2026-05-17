@@ -163,6 +163,17 @@ function thought(state: AnalysisState): string {
   return 'Initializing…'
 }
 
+// ── Extract reasoning from synthesis text ─────────────────────────────────────
+
+function extractReasoning(text: string): string {
+  const idx = text.indexOf('## Bottom-Line Recommendation')
+  if (idx === -1) return ''
+  const after = text.slice(idx + '## Bottom-Line Recommendation'.length).trimStart()
+  const next  = after.indexOf('\n## ')
+  const block = next !== -1 ? after.slice(0, next) : after
+  return block.replace(/^(PURSUE|WATCHLIST|PASS)\s*/i, '').trim()
+}
+
 // ── Verdict color config ──────────────────────────────────────────────────────
 
 const VC: Record<VerdictVal, { bg: string; border: string; text: string; glow: string }> = {
@@ -400,6 +411,47 @@ export function IngestionView({ state, file, onFile, onBack }: {
           <div style={{ position: 'absolute', bottom: '-10%', right: '-5%', width: '38%', height: '50%', background: 'rgba(78,222,163,0.05)', borderRadius: '50%', filter: 'blur(120px)' }} />
         </div>
       </div>
+
+      {/* ── Verdict reasoning panel — slides up when done ── */}
+      <AnimatePresence>
+        {isDone && state.verdict && (
+          <motion.div
+            key="reasoning"
+            initial={{ y: 60, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 60, opacity: 0 }}
+            transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+            style={{
+              flexShrink: 0,
+              borderTop: '1px solid rgba(255,255,255,0.08)',
+              background: 'rgba(10,10,10,0.97)',
+              backdropFilter: 'blur(24px)',
+              padding: '18px 32px',
+              maxHeight: 180,
+              overflowY: 'auto',
+            }}
+          >
+            <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
+              {/* Verdict badge */}
+              <div style={{
+                flexShrink: 0,
+                padding: '6px 14px', borderRadius: 6,
+                background: VC[state.verdict as VerdictVal].bg,
+                border: '1px solid ' + VC[state.verdict as VerdictVal].border,
+                boxShadow: VC[state.verdict as VerdictVal].glow,
+                textAlign: 'center',
+              }}>
+                <div style={{ fontSize: 8, fontFamily: 'JetBrains Mono,monospace', letterSpacing: '0.12em', color: VC[state.verdict as VerdictVal].text, marginBottom: 2 }}>VERDICT</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: VC[state.verdict as VerdictVal].text }}>{state.verdict}</div>
+              </div>
+              {/* Reasoning */}
+              <p style={{ fontSize: 13, color: '#c4c7c8', lineHeight: 1.72, margin: 0, paddingTop: 2 }}>
+                {extractReasoning(state.synthesisText) || 'Analysis complete. See full report for details.'}
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Bottom bar ── */}
       <div style={{

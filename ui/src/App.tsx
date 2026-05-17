@@ -33,11 +33,7 @@ export interface AnalysisRecord {
   status: 'running' | 'complete' | 'error'
 }
 
-const SEED_RECORDS: AnalysisRecord[] = [
-  { id: 's1', property: '4123 McCullough Ave', verdict: 'PURSUE',    askingPrice: 4_800_000, status: 'complete' },
-  { id: 's2', property: '7821 Blanco Rd',      verdict: 'PASS',      askingPrice: 9_200_000, status: 'complete' },
-  { id: 's3', property: '2455 Culebra Rd',     verdict: 'WATCHLIST', askingPrice: 3_100_000, status: 'complete' },
-]
+const SEED_RECORDS: AnalysisRecord[] = []
 
 function makeInitialState(): AnalysisState {
   const skills: AnalysisState['skills'] = {}

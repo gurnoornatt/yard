@@ -8,7 +8,22 @@ const VERDICT_CONFIG: Record<string, { label: string; bg: string; color: string;
   UNKNOWN:   { label: 'UNKNOWN',   bg: 'rgba(100,116,139,0.1)', color: '#64748b', border: '#64748b' },
 }
 
-function renderSynthesis(text: string) {
+function extractReasoning(text: string): { reasoning: string; rest: string } {
+  const idx = text.indexOf('## Bottom-Line Recommendation')
+  if (idx === -1) return { reasoning: '', rest: text }
+
+  const afterHeader = text.slice(idx + '## Bottom-Line Recommendation'.length).trimStart()
+  // Find where the next section starts (if any)
+  const nextSection = afterHeader.indexOf('\n## ')
+  const reasoningBlock = nextSection !== -1 ? afterHeader.slice(0, nextSection) : afterHeader
+  const rest = text.slice(0, idx).trimEnd()
+
+  // Strip the leading PURSUE/WATCHLIST/PASS word so the reasoning reads as plain prose
+  const cleaned = reasoningBlock.replace(/^(PURSUE|WATCHLIST|PASS)\s*/i, '').trim()
+  return { reasoning: cleaned, rest }
+}
+
+function renderSections(text: string) {
   return text.split('\n').map((line, i) => {
     if (line.startsWith('## ')) {
       return (
@@ -23,7 +38,7 @@ function renderSynthesis(text: string) {
     }
     if (!line.trim()) return <div key={i} style={{ height: 4 }} />
     return (
-      <p key={i} style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.65 }}>
+      <p key={i} style={{ fontSize: 12, color: 'var(--text-2)', lineHeight: 1.7 }}>
         {line}
       </p>
     )
@@ -36,6 +51,7 @@ export function SynthesisPanel({ verdict, synthesisText, isStreaming }: {
   isStreaming: boolean
 }) {
   const c = verdict ? VERDICT_CONFIG[verdict] : null
+  const { reasoning, rest } = extractReasoning(synthesisText)
 
   return (
     <div style={{ padding: '24px 24px' }}>
@@ -43,23 +59,36 @@ export function SynthesisPanel({ verdict, synthesisText, isStreaming }: {
         Analysis
       </p>
 
+      {/* Verdict badge */}
       {c && (
         <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
           style={{
             background: c.bg, border: `1px solid ${c.border}`,
-            borderRadius: 10, padding: '12px 16px', marginBottom: 20,
-            display: 'flex', alignItems: 'center', gap: 10,
+            borderRadius: 10, padding: '14px 16px', marginBottom: 16,
           }}>
-          <div style={{ width: 8, height: 8, borderRadius: '50%', background: c.color, flexShrink: 0 }} />
-          <span style={{ fontWeight: 800, fontSize: 13, letterSpacing: '0.1em', color: c.color }}>
-            {c.label}
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: reasoning ? 10 : 0 }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: c.color, flexShrink: 0 }} />
+            <span style={{ fontWeight: 800, fontSize: 13, letterSpacing: '0.1em', color: c.color }}>
+              {c.label}
+            </span>
+          </div>
+
+          {/* Reasoning block — shows the "why" right under the verdict */}
+          {reasoning && (
+            <p style={{
+              fontSize: 13, color: 'var(--text-2)', lineHeight: 1.7,
+              margin: 0, paddingTop: 2,
+            }}>
+              {reasoning}
+            </p>
+          )}
         </motion.div>
       )}
 
+      {/* Rest of analysis sections */}
       {synthesisText ? (
         <div>
-          {renderSynthesis(synthesisText)}
+          {renderSections(rest)}
           {isStreaming && (
             <motion.span
               animate={{ opacity: [1, 0, 1] }}
@@ -69,15 +98,13 @@ export function SynthesisPanel({ verdict, synthesisText, isStreaming }: {
           )}
         </div>
       ) : (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <motion.div
-            animate={{ opacity: [0.3, 0.8, 0.3] }}
-            transition={{ duration: 1.5, repeat: Infinity }}
-            style={{ fontSize: 13, color: 'var(--text-3)' }}
-          >
-            Waiting for research to complete…
-          </motion.div>
-        </div>
+        <motion.div
+          animate={{ opacity: [0.3, 0.8, 0.3] }}
+          transition={{ duration: 1.5, repeat: Infinity }}
+          style={{ fontSize: 13, color: 'var(--text-3)' }}
+        >
+          Waiting for research to complete…
+        </motion.div>
       )}
     </div>
   )
