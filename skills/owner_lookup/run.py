@@ -1,26 +1,125 @@
+import asyncio
 import json
 import os
 import re
 import sys
 
-from browserbase import Browserbase
-from playwright.sync_api import sync_playwright
+from stagehand import AsyncStagehand
 
 BB_KEY = os.environ.get("BROWSERBASE_API_KEY", "")
+MODEL_KEY = os.environ.get("MODEL_API_KEY", "")
 BCAD_SEARCH = "https://bexar.trueautomation.com/clientdb/PropertySearch.aspx?cid=110"
+MODEL = "openai/gpt-4o-mini"
 
 
 def _parse_address(address: str) -> tuple[str, str]:
-    """Split '4123 McCullough Ave' into ('4123', 'McCullough Ave')."""
     m = re.match(r"^(\d+)\s+(.+)$", address.strip())
-    if m:
-        return m.group(1), m.group(2)
-    return "", address.strip()
+    return (m.group(1), m.group(2)) if m else ("", address.strip())
+
+
+def _parse_extraction_blob(blob: str, current_url: str = "") -> dict:
+    """Parse the freeform extraction string Stagehand returns into structured fields."""
+    result = {}
+    lines = blob.replace("\\n", "\n").split("\n")
+    for line in lines:
+        line = line.strip()
+        if not line or ":" not in line:
+            continue
+        key, _, val = line.partition(":")
+        key = key.strip().lower()
+        val = val.strip()
+        if val.lower() in ("null", "none", "n/a", ""):
+            val = ""
+        if "owner name" in key:
+            result["owner_name"] = val
+        elif "owner" in key and "address" in key or "mailing" in key:
+            result["owner_address"] = val
+        elif "appraised" in key or "market value" in key or "total value" in key:
+            result["appraised_value"] = val
+        elif "property id" in key or "prop_id" in key or "id" == key:
+            result["bcad_prop_id"] = val
+
+    # Pull prop_id from URL if not found in text
+    if not result.get("bcad_prop_id") and current_url:
+        m = re.search(r"prop_id=(\d+)", current_url)
+        if m:
+            result["bcad_prop_id"] = m.group(1)
+
+    return result
+
+
+async def _scrape(street_num: str, street_name: str) -> dict:
+    async with AsyncStagehand(
+        browserbase_api_key=BB_KEY,
+        model_api_key=MODEL_KEY,
+    ) as client:
+        session = await client.sessions.start(model_name=MODEL)
+        try:
+            await session.navigate(url=BCAD_SEARCH)
+
+            # Single search box — type "236 Deerwood" and submit
+            search_term = f"{street_num} {street_name.split()[0]}"
+            await session.execute(
+                execute_options={
+                    "instruction": (
+                        f"The page has one search box labeled 'Property Search:'. "
+                        f"Type '{search_term}' in it and click the 'Search' button."
+                    ),
+                    "max_steps": 6,
+                },
+                agent_config={"model": MODEL},
+                timeout=60.0,
+            )
+
+            # Click first result
+            await session.execute(
+                execute_options={
+                    "instruction": "Click the first property link in the results list to open the property detail page.",
+                    "max_steps": 4,
+                },
+                agent_config={"model": MODEL},
+                timeout=45.0,
+            )
+
+            # Non-streaming extract — returns SessionExtractResponse
+            resp = await session.extract(
+                instruction=(
+                    "Extract from this property detail page: "
+                    "Owner Name, Owner Mailing Address, Total Appraised Value, Property ID from the URL."
+                ),
+                schema={
+                    "type": "object",
+                    "properties": {
+                        "owner_name": {"type": "string"},
+                        "owner_address": {"type": "string"},
+                        "appraised_value": {"type": "string"},
+                        "bcad_prop_id": {"type": "string"},
+                    },
+                    "required": ["owner_name"],
+                },
+                options={"model": MODEL},
+            )
+
+            raw = {}
+            if resp and resp.data and resp.data.result:
+                r = resp.data.result
+                # If schema was applied, r has keys directly
+                if isinstance(r, dict) and "owner_name" in r:
+                    raw = r
+                # Otherwise parse the extraction blob
+                elif isinstance(r, dict) and "extraction" in r:
+                    raw = _parse_extraction_blob(str(r["extraction"]))
+                elif isinstance(r, str):
+                    raw = _parse_extraction_blob(r)
+
+            return raw
+        finally:
+            await session.end()
 
 
 def run(params: dict) -> dict:
     state = params.get("state", "").strip().upper()
-    if state != "TX":
+    if state and state != "TX":
         return {
             "job": "owner_lookup",
             "status": "data_unavailable",
@@ -29,77 +128,25 @@ def run(params: dict) -> dict:
         }
 
     address = params.get("address", "")
+    if not address:
+        return {
+            "job": "owner_lookup",
+            "status": "data_unavailable",
+            "reason": "No address provided",
+            "data": None,
+        }
+
     street_num, street_name = _parse_address(address)
 
     try:
-        bb = Browserbase(api_key=BB_KEY)
-        with sync_playwright() as p:
-            session = bb.sessions.create()
-            browser = p.chromium.connect_over_cdp(session.connect_url)
-            context = browser.contexts[0]
-            page = context.pages[0]
-            page.set_default_timeout(20000)
-
-            page.goto(BCAD_SEARCH)
-            page.wait_for_load_state("networkidle")
-
-            # Fill street number and name
-            num_sel = "input[name*='StreetNum'], input[id*='StreetNum'], input[name*='streetnum']"
-            name_sel = "input[name*='StreetName'], input[id*='StreetName'], input[name*='streetname']"
-
-            if page.locator(num_sel).count():
-                page.fill(num_sel, street_num)
-            if page.locator(name_sel).count():
-                page.fill(name_sel, street_name.split()[0])  # just the street name word
-
-            # Submit search
-            page.click("input[type='submit'], button[type='submit']")
-            page.wait_for_load_state("networkidle")
-
-            # Click first result in table
-            first_link = page.locator("table a").first
-            if first_link.count() == 0:
-                browser.close()
-                return {
-                    "job": "owner_lookup",
-                    "status": "data_unavailable",
-                    "reason": "Property not found in BCAD",
-                    "data": None,
-                }
-
-            # Extract prop_id from href before clicking
-            href = first_link.get_attribute("href") or ""
-            prop_id_match = re.search(r"prop_id=(\d+)", href)
-            bcad_prop_id = prop_id_match.group(1) if prop_id_match else ""
-
-            first_link.click()
-            page.wait_for_load_state("networkidle")
-
-            # Extract owner info from property detail page
-            content = page.content()
-            browser.close()
-
-        from bs4 import BeautifulSoup
-
-        soup = BeautifulSoup(content, "lxml")
-
-        def find_field(label: str) -> str:
-            for el in soup.find_all(string=re.compile(label, re.I)):
-                sib = el.find_parent().find_next_sibling()
-                if sib:
-                    return sib.get_text(strip=True)
-            return ""
-
-        owner_name = find_field(r"owner\s+name") or find_field(r"owner")
-        owner_address = find_field(r"owner\s+address") or find_field(r"mailing")
-        appraised = find_field(r"appraised\s+value") or find_field(r"total\s+value")
-
-        # Detect out-of-state from owner address
+        data = asyncio.run(_scrape(street_num, street_name))
+        owner_name = data.get("owner_name", "")
+        owner_address = data.get("owner_address", "")
+        bcad_prop_id = data.get("bcad_prop_id", "")
         owner_state = ""
-        state_match = re.search(r"\b([A-Z]{2})\s+\d{5}", owner_address)
-        if state_match:
-            owner_state = state_match.group(1)
-
+        m = re.search(r"\b([A-Z]{2})\s+\d{5}", owner_address)
+        if m:
+            owner_state = m.group(1)
         return {
             "job": "owner_lookup",
             "status": "ok",
@@ -108,11 +155,11 @@ def run(params: dict) -> dict:
                 "owner_address": owner_address,
                 "owner_state": owner_state,
                 "out_of_state": owner_state not in ("TX", ""),
-                "appraised_value": appraised,
+                "appraised_value": data.get("appraised_value", ""),
                 "bcad_prop_id": bcad_prop_id,
+                "source": "BCAD (Bexar County Appraisal District)",
             },
         }
-
     except Exception as e:
         return {
             "job": "owner_lookup",

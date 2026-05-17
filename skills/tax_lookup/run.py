@@ -1,48 +1,107 @@
+import asyncio
 import json
 import os
 import re
 import sys
 
-from browserbase import Browserbase
-from playwright.sync_api import sync_playwright
-from bs4 import BeautifulSoup
+from stagehand import AsyncStagehand
 
 BB_KEY = os.environ.get("BROWSERBASE_API_KEY", "")
+MODEL_KEY = os.environ.get("MODEL_API_KEY", "")
 BCAD_PROP = (
     "https://bexar.trueautomation.com/clientdb/property.aspx?cid=110&prop_id={prop_id}"
 )
 BCAD_SEARCH = "https://bexar.trueautomation.com/clientdb/PropertySearch.aspx?cid=110"
+MODEL = "openai/gpt-4o-mini"
 
 
-def _parse_address(address: str) -> tuple[str, str]:
-    m = re.match(r"^(\d+)\s+(.+)$", address.strip())
-    if m:
-        return m.group(1), m.group(2)
-    return "", address.strip()
-
-
-def _extract_tax(content: str) -> dict:
-    soup = BeautifulSoup(content, "lxml")
-    text = soup.get_text(" ", strip=True)
-
-    delinquent = bool(re.search(r"delinquent|past\s+due|overdue", text, re.I))
-    amount_match = re.search(r"\$[\d,]+(?:\.\d{2})?", text)
-    total_due = amount_match.group(0) if amount_match else None
-
-    year_match = re.search(r"(20\d{2})", text)
-    tax_year = year_match.group(1) if year_match else None
-
+def _parse_tax_blob(blob: str) -> dict:
+    text = str(blob).lower()
+    delinquent = bool(re.search(r"delinquent|past due|overdue|unpaid", text))
+    amount = re.search(r"\$[\d,]+(?:\.\d{2})?", blob)
+    year = re.search(r"\b(20\d{2})\b", blob)
     return {
         "delinquent": delinquent,
-        "total_due": total_due,
-        "tax_year": tax_year,
+        "total_due": amount.group(0) if amount else None,
+        "tax_year": year.group(1) if year else None,
         "status": "delinquent" if delinquent else "current",
     }
 
 
+def _parse_extraction(result: dict | str | None) -> dict:
+    if not result:
+        return {}
+    if isinstance(result, dict):
+        if "delinquent" in result:
+            return result
+        blob = result.get("extraction", "")
+    else:
+        blob = str(result)
+    return _parse_tax_blob(blob)
+
+
+async def _scrape_tax(bcad_prop_id: str = "", address: str = "") -> dict:
+    async with AsyncStagehand(
+        browserbase_api_key=BB_KEY,
+        model_api_key=MODEL_KEY,
+    ) as client:
+        session = await client.sessions.start(model_name=MODEL)
+        try:
+            if bcad_prop_id:
+                await session.navigate(url=BCAD_PROP.format(prop_id=bcad_prop_id))
+                await session.act(input="Click the Taxes tab or Taxes link.")
+            else:
+                m = re.match(r"^(\d+)\s+(.+)$", address.strip())
+                street_num = m.group(1) if m else ""
+                street_name = m.group(2) if m else address
+                search_term = f"{street_num} {street_name.split()[0]}"
+                await session.navigate(url=BCAD_SEARCH)
+                await session.execute(
+                    execute_options={
+                        "instruction": (
+                            f"Type '{search_term}' in the 'Property Search:' box and click Search."
+                        ),
+                        "max_steps": 6,
+                    },
+                    agent_config={"model": MODEL},
+                    timeout=60.0,
+                )
+                await session.execute(
+                    execute_options={
+                        "instruction": "Click the first property link in results, then click the Taxes tab.",
+                        "max_steps": 6,
+                    },
+                    agent_config={"model": MODEL},
+                    timeout=45.0,
+                )
+
+            resp = await session.extract(
+                instruction=(
+                    "From the taxes section extract: whether taxes are delinquent (true/false), "
+                    "total amount due, most recent tax year, and status (current or delinquent)."
+                ),
+                schema={
+                    "type": "object",
+                    "properties": {
+                        "delinquent": {"type": "boolean"},
+                        "total_due": {"type": "string"},
+                        "tax_year": {"type": "string"},
+                        "status": {"type": "string"},
+                    },
+                    "required": ["delinquent", "status"],
+                },
+                options={"model": MODEL},
+            )
+
+            raw = resp.data.result if resp and resp.data else None
+            return _parse_extraction(raw)
+        finally:
+            await session.end()
+
+
 def run(params: dict) -> dict:
     state = params.get("state", "").strip().upper()
-    if state != "TX":
+    if state and state != "TX":
         return {
             "job": "tax_lookup",
             "status": "data_unavailable",
@@ -50,50 +109,15 @@ def run(params: dict) -> dict:
             "data": None,
         }
 
-    bcad_prop_id = params.get("bcad_prop_id", "")
-    address = params.get("address", "")
-
     try:
-        bb = Browserbase(api_key=BB_KEY)
-        with sync_playwright() as p:
-            session = bb.sessions.create()
-            browser = p.chromium.connect_over_cdp(session.connect_url)
-            context = browser.contexts[0]
-            page = context.pages[0]
-            page.set_default_timeout(20000)
-
-            if bcad_prop_id:
-                page.goto(BCAD_PROP.format(prop_id=bcad_prop_id))
-            else:
-                # Re-search by address
-                street_num, street_name = _parse_address(address)
-                page.goto(BCAD_SEARCH)
-                page.wait_for_load_state("networkidle")
-                num_sel = "input[name*='StreetNum'], input[id*='StreetNum']"
-                name_sel = "input[name*='StreetName'], input[id*='StreetName']"
-                if page.locator(num_sel).count():
-                    page.fill(num_sel, street_num)
-                if page.locator(name_sel).count():
-                    page.fill(name_sel, street_name.split()[0])
-                page.click("input[type='submit'], button[type='submit']")
-                page.wait_for_load_state("networkidle")
-                first = page.locator("table a").first
-                if first.count():
-                    first.click()
-                    page.wait_for_load_state("networkidle")
-
-            # Navigate to tax tab
-            tax_tab = page.locator("a:has-text('Tax'), a:has-text('Taxes')")
-            if tax_tab.count():
-                tax_tab.first.click()
-                page.wait_for_load_state("networkidle")
-
-            content = page.content()
-            browser.close()
-
-        tax_data = _extract_tax(content)
-        return {"job": "tax_lookup", "status": "ok", "data": tax_data}
-
+        data = asyncio.run(
+            _scrape_tax(
+                bcad_prop_id=params.get("bcad_prop_id", ""),
+                address=params.get("address", ""),
+            )
+        )
+        data["source"] = "BCAD (Bexar County Appraisal District)"
+        return {"job": "tax_lookup", "status": "ok", "data": data}
     except Exception as e:
         return {"job": "tax_lookup", "status": "error", "reason": str(e), "data": None}
 

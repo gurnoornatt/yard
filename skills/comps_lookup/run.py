@@ -106,7 +106,12 @@ def run(params: dict) -> dict:
     return {
         "job": "comps_lookup",
         "status": "ok",
-        "data": {"comps": comps, "comp_count": len(comps), "market": market},
+        "data": {
+            "comps": comps,
+            "comp_count": len(comps),
+            "market": market,
+            "source": "ATTOM + US Census ACS5",
+        },
     }
 
 

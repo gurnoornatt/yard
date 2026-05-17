@@ -59,6 +59,7 @@ def run(params: dict) -> dict:
         "data": {
             "violations": violations,
             "count": len(violations),
+            "source": "SA Open Data Portal",
             "open_count": open_count,
         },
     }

@@ -85,6 +85,7 @@ def run(params: dict) -> dict:
         "appraised_value": appraised_value,
     }
 
+    data["source"] = "ATTOM Data Solutions"
     return {"job": "deed_lookup", "status": "ok", "data": data}
 
 

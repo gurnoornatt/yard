@@ -50,7 +50,11 @@ def run(params: dict) -> dict:
     return {
         "job": "permit_lookup",
         "status": "ok",
-        "data": {"permits": permits, "count": len(permits)},
+        "data": {
+            "permits": permits,
+            "count": len(permits),
+            "source": "SA Open Data Portal",
+        },
     }
 
 

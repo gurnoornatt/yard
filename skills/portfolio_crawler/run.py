@@ -1,20 +1,96 @@
+import asyncio
 import json
 import os
+import re
 import sys
 
-from browserbase import Browserbase
-from playwright.sync_api import sync_playwright
-from bs4 import BeautifulSoup
+from stagehand import AsyncStagehand
 
 BB_KEY = os.environ.get("BROWSERBASE_API_KEY", "")
+MODEL_KEY = os.environ.get("MODEL_API_KEY", "")
 BCAD_SEARCH = "https://bexar.trueautomation.com/clientdb/PropertySearch.aspx?cid=110"
+MODEL = "openai/gpt-4o-mini"
+
+
+def _parse_portfolio_blob(blob: str) -> list[dict]:
+    """Parse freeform extraction text into a list of property dicts."""
+    properties = []
+    lines = str(blob).replace("\\n", "\n").split("\n")
+    for line in lines:
+        line = line.strip(" -•*")
+        if not line or len(line) < 5:
+            continue
+        # Each line is typically "Address — type — $value" or just an address
+        props: dict = {"address": line, "property_type": "", "appraised_value": ""}
+        amt = re.search(r"\$[\d,]+(?:\.\d{2})?", line)
+        if amt:
+            props["appraised_value"] = amt.group(0)
+            props["address"] = line[: amt.start()].strip(" —-|")
+        properties.append(props)
+    return properties[:20]
+
+
+async def _scrape_portfolio(owner_name: str) -> dict:
+    search_term = owner_name.split()[0]
+    async with AsyncStagehand(
+        browserbase_api_key=BB_KEY,
+        model_api_key=MODEL_KEY,
+    ) as client:
+        session = await client.sessions.start(model_name=MODEL)
+        try:
+            await session.navigate(url=BCAD_SEARCH)
+            await session.execute(
+                execute_options={
+                    "instruction": (
+                        "Click the 'Advanced >>' button to expand advanced search options. "
+                        f"Find the Owner Name field and type '{search_term}'. "
+                        "Click the Search button. Wait for results."
+                    ),
+                    "max_steps": 8,
+                },
+                agent_config={"model": MODEL},
+                timeout=60.0,
+            )
+
+            resp = await session.extract(
+                instruction=(
+                    f"List all property addresses shown in the search results that belong to owner '{owner_name}' "
+                    "or similar name. Include address, property type, and appraised value for each row, up to 20."
+                ),
+                schema={
+                    "type": "object",
+                    "properties": {
+                        "properties": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "address": {"type": "string"},
+                                    "property_type": {"type": "string"},
+                                    "appraised_value": {"type": "string"},
+                                },
+                            },
+                        },
+                    },
+                    "required": ["properties"],
+                },
+                options={"model": MODEL},
+            )
+
+            raw = resp.data.result if resp and resp.data else None
+            if isinstance(raw, dict):
+                if "properties" in raw and isinstance(raw["properties"], list):
+                    return {"properties": raw["properties"]}
+                if "extraction" in raw:
+                    return {"properties": _parse_portfolio_blob(str(raw["extraction"]))}
+            return {"properties": []}
+        finally:
+            await session.end()
 
 
 def run(params: dict) -> dict:
     state = params.get("state", "").strip().upper()
-    owner_name = params.get("owner_name", "").strip()
-
-    if state != "TX":
+    if state and state != "TX":
         return {
             "job": "portfolio_crawler",
             "status": "data_unavailable",
@@ -22,57 +98,18 @@ def run(params: dict) -> dict:
             "data": None,
         }
 
+    owner_name = params.get("owner_name", "").strip()
     if not owner_name:
         return {
             "job": "portfolio_crawler",
             "status": "data_unavailable",
-            "reason": "No owner name available from owner_lookup",
+            "reason": "No owner name from owner_lookup",
             "data": None,
         }
 
     try:
-        bb = Browserbase(api_key=BB_KEY)
-        with sync_playwright() as p:
-            session = bb.sessions.create()
-            browser = p.chromium.connect_over_cdp(session.connect_url)
-            context = browser.contexts[0]
-            page = context.pages[0]
-            page.set_default_timeout(20000)
-
-            page.goto(BCAD_SEARCH)
-            page.wait_for_load_state("networkidle")
-
-            # Search by owner name
-            owner_sel = "input[name*='Owner'], input[id*='Owner'], input[name*='owner']"
-            if page.locator(owner_sel).count():
-                # Use first word of LLC name for broader match
-                search_term = owner_name.split()[0] if owner_name else owner_name
-                page.fill(owner_sel, search_term)
-                page.click("input[type='submit'], button[type='submit']")
-                page.wait_for_load_state("networkidle")
-
-            content = page.content()
-            browser.close()
-
-        soup = BeautifulSoup(content, "lxml")
-        rows = soup.select("table tr")[1:21]  # skip header, max 20
-
-        properties = []
-        for row in rows:
-            cells = row.find_all("td")
-            if len(cells) >= 2:
-                properties.append(
-                    {
-                        "address": cells[0].get_text(strip=True),
-                        "property_type": cells[1].get_text(strip=True)
-                        if len(cells) > 1
-                        else "",
-                        "appraised_value": cells[2].get_text(strip=True)
-                        if len(cells) > 2
-                        else "",
-                    }
-                )
-
+        data = asyncio.run(_scrape_portfolio(owner_name))
+        properties = data.get("properties", [])
         return {
             "job": "portfolio_crawler",
             "status": "ok",
@@ -80,9 +117,9 @@ def run(params: dict) -> dict:
                 "owner_name": owner_name,
                 "properties": properties,
                 "property_count": len(properties),
+                "source": "BCAD (Bexar County Appraisal District)",
             },
         }
-
     except Exception as e:
         return {
             "job": "portfolio_crawler",

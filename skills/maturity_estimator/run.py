@@ -56,6 +56,7 @@ def run(params: dict) -> dict:
             "months_remaining": months,
             "pressure_level": level,
             "interpretation": PRESSURE_LABELS[level],
+            "source": "Derived from deed records",
         },
     }
 

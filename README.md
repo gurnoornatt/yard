@@ -1,115 +1,118 @@
 # Sentinel — Autonomous OM Analysis Agent
 
-An autonomous multifamily acquisition analyst. Drop in a broker offering memorandum; Sentinel researches 8 public-record sources and returns a structured PURSUE / WATCHLIST / PASS recommendation in under 90 seconds.
+An autonomous multifamily acquisition analyst. Drop in a broker offering memorandum; Sentinel researches 8 public-record sources and returns a structured PURSUE / WATCHLIST / PASS recommendation with real data from live APIs.
 
-**Runtime:** [Hermes Agent](https://hermes-agent.nousresearch.com) (Nous Research)  
-**Models:** `nvidia/nemotron-3-super-120b-a12b` via [NVIDIA NIM](https://build.nvidia.com) (primary)  
-**Track:** Nemotron (Cloud) — Hack-a-Claw 2026
+**Backend:** FastAPI + asyncio  
+**Browser Automation:** [Stagehand](https://github.com/browserbase/stagehand) (Browserbase AI-driven browser agent)  
+**LLM:** `nvidia/nemotron-3-super-120b-a12b` via NVIDIA NIM (OM parsing) + `openai/gpt-4o-mini` (BCAD navigation)  
+**Frontend:** React + TypeScript + Vite  
+**Track:** Hack-a-Claw 2026
 
 ---
 
 ## How it works
 
-Hermes drives the full reasoning loop autonomously:
+Sentinel runs 10 skills in parallel, each hitting a real public data source:
 
-1. `parse_om` → extract address, units, price, broker narrative from the PDF
-2. `owner_lookup` → identify the LLC, principal, hold period, out-of-state flag
-3. `deed_lookup` → surface loans: lender, maturity date, CMBS vs regional
-4. `portfolio_crawler` → map the owner's other holdings for portfolio pressure
-5. `permit_lookup` + `tax_lookup` + `violations_lookup` → hidden flags
-6. `comps_lookup` → recent submarket sales to reality-check the ask
-7. `maturity_estimator` → compute refi pressure from loan maturity date
-8. `synthesize_analysis` → 6-section structured report → saves to `reports/`
-
-Every step streams live in the terminal. Judges watch the agent think.
-
----
-
-## Setup
-
-### Prerequisites
-- [Hermes Agent](https://hermes-agent.nousresearch.com) installed
-- NVIDIA NIM API key from [build.nvidia.com](https://build.nvidia.com)
-- Python 3.11+ via `uv`
-
-### Install
-
-```bash
-# 1. Install Python deps
-uv sync
-
-# 2. Generate the three demo OM PDFs
-uv run python scripts/generate_demo_oms.py
-
-# 3. Install Sentinel skills into Hermes
-mkdir -p ~/.hermes/skills/sentinel
-cp -r skills/* ~/.hermes/skills/sentinel/
-
-# 4. Configure Hermes
-hermes config set display.streaming true
-hermes config set display.show_reasoning true
-hermes config set approvals.mode smart
-```
-
-### API Keys (in ~/.hermes/.env)
-```
-NVIDIA_API_KEY=nvapi-...
-OPENROUTER_API_KEY=sk-or-...   # optional fallback for rate-limit protection
-```
-
----
-
-## Run the demo
-
-```bash
-hermes
-```
-
-Then type:
-```
-analyze the OM at demo_oms/mccullough_om.pdf
-```
-
-Watch Hermes reason through 8 research steps in real time. Report saves to `reports/`.
-
-### Demo properties
-
-| Property | Expected verdict | Key signal |
+| Skill | Data Source | What it finds |
 |---|---|---|
-| `mccullough_om.pdf` | **PURSUE** | Frost Bank loan matured March 2026, 11yr out-of-state hold |
-| `blanco_om.pdf` | **PASS** | $84k tax delinquency + 3 open violations + asking above comps |
-| `culebra_om.pdf` | **WATCHLIST** | Loan maturity ambiguous, price fair, no violations |
+| `parse_om` | Offering Memorandum (PDF) | Address, units, asking price, year built |
+| `owner_lookup` | BCAD via Stagehand | LLC name, principal, out-of-state flag |
+| `deed_lookup` | ATTOM Data Solutions | Loan lender, maturity date, CMBS flag |
+| `portfolio_crawler` | BCAD via Stagehand | All properties owned by the same LLC |
+| `permit_lookup` | SA Open Data Portal | Recent permits by address |
+| `tax_lookup` | BCAD via Stagehand | Tax status, delinquency flag |
+| `violations_lookup` | SA Open Data Portal | Code violations by address |
+| `comps_lookup` | ATTOM + US Census ACS5 | Recent sales comps, market rent, vacancy |
+| `maturity_estimator` | Derived from deed records | Refi pressure, days-to-maturity |
+| `synthesize_analysis` | NVIDIA Nemotron | 6-section structured investment verdict |
+
+Results stream live to the UI via Server-Sent Events. Every data point shows its source.
 
 ---
 
 ## Architecture
 
 ```
-hermes/SOUL.md          — agent identity and research order
+server.py               — FastAPI backend, SSE streaming, skill orchestration
 skills/<name>/
-  SKILL.md              — contract: when to call, exact JSON shape returned
   run.py                — JSON in → JSON out (same interface, every skill)
-data/demo_properties/   — pre-cached data contract (one JSON file per property)
-demo_oms/               — generated broker OM PDFs (run generate_demo_oms.py)
-reports/                — analysis output (written by the agent)
+  SKILL.md              — contract: when to call, exact JSON shape
+ui/                     — React frontend (Vite + TypeScript)
+  src/components/
+    DataFeed.tsx        — live SSE feed with source citations
+    SynthesisPanel.tsx  — structured verdict display
 ```
 
-No custom orchestrator. No REST server. No vector DB. Hermes is the agent; the skills are the tools.
+**Stagehand skills** (`owner_lookup`, `tax_lookup`, `portfolio_crawler`) run as subprocesses to avoid asyncio event-loop conflicts. Each gets a 60-second timeout.
 
 ---
 
-## Models used
+## Setup
 
-| Model | Role |
-|---|---|
-| `nvidia/nemotron-3-super-120b-a12b` | Primary reasoning — all research + synthesis |
-| `nvidia/nemotron-3-nano-30b-a3b` | Optional delegation for subtasks (configurable) |
+### Prerequisites
 
-Both served via NVIDIA NIM at `integrate.api.nvidia.com`.
+- Python 3.11+ and [`uv`](https://github.com/astral-sh/uv)
+- Node.js 18+
+- API keys (see below)
+
+### Install
+
+```bash
+# Python deps
+uv sync
+
+# Frontend deps
+cd ui && npm install && npm run build && cd ..
+```
+
+### API Keys
+
+Create a `.env` file in the project root (never commit this):
+
+```
+NVIDIA_API_KEY=nvapi-...          # NVIDIA NIM — OM parsing
+BROWSERBASE_API_KEY=bb_live_...   # Browserbase — cloud browser for BCAD
+OPENAI_API_KEY=sk-proj-...        # OpenAI gpt-4o-mini — Stagehand AI navigation
+MODEL_API_KEY=sk-proj-...         # Same as OPENAI_API_KEY (Stagehand alias)
+ATTOM_API_KEY=...                 # ATTOM Data Solutions — deed + comps
+CENSUS_API_KEY=...                # US Census — market data (free at api.census.gov)
+OPENROUTER_API_KEY=sk-or-...      # Optional fallback
+```
+
+---
+
+## Run
+
+```bash
+# Load env vars and start the server
+set -a && source .env && set +a
+uv run uvicorn server:app --port 8000
+
+# Open in browser
+open http://localhost:8000
+```
+
+Upload any multifamily OM PDF. Sentinel:
+1. Parses the PDF for address and deal terms
+2. Launches 8 parallel research tasks (real APIs + live browser sessions)
+3. Streams every result to the UI as it completes
+4. Synthesizes a full investment memo with PURSUE / WATCHLIST / PASS verdict
+
+---
+
+## Data sources (all live, no mocks)
+
+| Source | Coverage | API |
+|---|---|---|
+| BCAD (Bexar County Appraisal District) | Bexar County TX | Stagehand browser automation |
+| ATTOM Data Solutions | National | `api.gateway.attomdata.com` |
+| SA Open Data Portal | San Antonio TX | `data.sanantonio.gov` CKAN API |
+| US Census ACS5 | National (ZIP level) | `api.census.gov` |
+| NVIDIA NIM | — | `integrate.api.nvidia.com` |
 
 ---
 
 ## Hackathon
 
-**Hack-a-Claw 2026** — Nemotron (Cloud) track  
-Built with Hermes Agent + NVIDIA Nemotron 3 in 24 hours.
+**Hack-a-Claw 2026** — Built in 24 hours.

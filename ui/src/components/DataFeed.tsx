@@ -136,6 +136,18 @@ function SkillData({ name, data }: { name: string; data: Record<string, unknown>
   return null
 }
 
+function SourceTag({ source }: { source: string }) {
+  return (
+    <div style={{
+      fontSize: 10, color: 'var(--text-3)', marginTop: 8,
+      paddingTop: 6, borderTop: '1px solid var(--border)',
+      letterSpacing: '0.03em',
+    }}>
+      via {source}
+    </div>
+  )
+}
+
 function SkillCard({ skill }: { skill: SkillState }) {
   const lc = LABEL_COLORS[skill.name] ?? { bg: '#666', text: '#fff' }
   const isActive = skill.status === 'running' || skill.status === 'complete'
@@ -181,6 +193,7 @@ function SkillCard({ skill }: { skill: SkillState }) {
           <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
             style={{ padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 2 }}>
             <SkillData name={skill.name} data={skill.data} />
+            {typeof skill.data.source === 'string' && skill.data.source && <SourceTag source={skill.data.source} />}
           </motion.div>
         )}
       </AnimatePresence>

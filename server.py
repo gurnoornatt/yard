@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -67,6 +68,46 @@ def call_skill(name: str, params: dict) -> dict:
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod.run(params)
+
+
+BROWSERBASE_SKILLS = {"owner_lookup", "tax_lookup", "portfolio_crawler"}
+
+
+async def call_skill_async(name: str, params: dict) -> dict:
+    if name in BROWSERBASE_SKILLS:
+        # Run in a subprocess — completely isolated event loop, no asyncio conflicts
+        path = str(SKILLS / name / "run.py")
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable,
+            path,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(input=json.dumps(params).encode()),
+                timeout=60.0,
+            )
+        except asyncio.TimeoutError:
+            proc.kill()
+            log.warning("  %s subprocess timed out", name)
+            return {
+                "job": name,
+                "status": "data_unavailable",
+                "reason": "BCAD timeout",
+                "data": None,
+            }
+        if proc.returncode == 0 and stdout.strip():
+            return json.loads(stdout)
+        log.error("  %s subprocess failed: %s", name, stderr.decode()[:300])
+        return {
+            "job": name,
+            "status": "data_unavailable",
+            "reason": "BCAD unavailable",
+            "data": None,
+        }
+    return call_skill(name, params)
 
 
 def sse(event: str, data: dict) -> str:
@@ -144,7 +185,7 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
                     property_id = _slug(ctx.get("address", ""), ctx.get("zip", ""))
 
             else:
-                result = call_skill(skill_name, ctx)
+                result = await call_skill_async(skill_name, ctx)
 
                 # Merge key fields back into ctx so downstream skills can use them
                 data = result.get("data") or {}
