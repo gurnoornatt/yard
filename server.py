@@ -10,6 +10,9 @@ import time
 from pathlib import Path
 from typing import AsyncGenerator
 
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).parent / ".env")
+
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
