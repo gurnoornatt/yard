@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html class="scroll-smooth" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script>!function(key){if(window.reb2b)return;window.reb2b={loaded:true};var s=document.createElement("script");s.async=true;s.src="https://ddwl4m2hdecbv.cloudfront.net/b/"+key+"/"+key+".js.gz";document.getElementsByTagName("script")[0].parentNode.insertBefore(s,document.getElementsByTagName("script")[0]);}("Z6PVLHQK176R");</script>
+<title>Noor | Real Estate Acquisitions Intelligence</title>
+<meta content="High-end real estate acquisitions intelligence for multifamily teams." name="description"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Geist:wght@400;600;800&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        colors: {
+          "secondary": "#98471d",
+          "terracotta": "#C66A3D",
+          "on-tertiary-container": "#838484",
+          "inverse-primary": "#cec5c1",
+          "on-primary-fixed-variant": "#4b4643",
+          "border-subtle": "#E5DDD0",
+          "surface-variant": "#F4EFE6",
+          "text-secondary": "#5C5048",
+          "on-secondary-fixed-variant": "#793005",
+          "on-secondary": "#ffffff",
+          "on-surface-variant": "#4d4541",
+          "background": "#fcf9f4",
+          "surface-container": "#f0ede9",
+          "on-primary-container": "#8a827f",
+          "surface-container-high": "#ebe8e3",
+          "tertiary-fixed-dim": "#c6c6c6",
+          "tertiary": "#000000",
+          "error": "#ba1a1a",
+          "surface-container-low": "#f6f3ee",
+          "on-secondary-fixed": "#351000",
+          "inverse-on-surface": "#f3f0eb",
+          "on-primary": "#ffffff",
+          "outline-variant": "#d0c4be",
+          "outline": "#7f7570",
+          "primary-fixed-dim": "#cec5c1",
+          "secondary-fixed-dim": "#ffb695",
+          "text-faded": "#C4BCB0",
+          "surface-bright": "#fcf9f4",
+          "surface-container-highest": "#e5e2dd",
+          "on-background": "#1c1c19",
+          "inverse-surface": "#31302d",
+          "primary-fixed": "#eae1dd",
+          "on-secondary-container": "#752d03",
+          "on-tertiary-fixed-variant": "#454747",
+          "surface-container-lowest": "#ffffff",
+          "on-tertiary-fixed": "#1a1c1c",
+          "surface-tint": "#635d5a",
+          "tertiary-fixed": "#e2e2e2",
+          "primary-container": "#1f1b19",
+          "secondary-fixed": "#ffdbcc",
+          "surface": "#fcf9f4",
+          "secondary-container": "#fd9665",
+          "on-primary-fixed": "#1f1b19",
+          "on-surface": "#1c1c19",
+          "tertiary-container": "#1a1c1c",
+          "primary": "#000000",
+          "error-container": "#ffdad6",
+          "surface-dim": "#dcdad5",
+          "on-error-container": "#93000a",
+          "on-error": "#ffffff",
+          "on-tertiary": "#ffffff"
+        },
+        borderRadius: {
+          "DEFAULT": "1rem",
+          "lg": "2rem",
+          "xl": "3rem",
+          "full": "9999px"
+        },
+        spacing: {
+          "margin-desktop": "64px",
+          "gutter": "24px",
+          "section-v-desktop": "160px",
+          "max-width": "1200px",
+          "section-v-mobile": "80px",
+          "margin-mobile": "20px"
+        },
+        fontFamily: {
+          "body-lg": ["Inter", "sans-serif"],
+          "display-lg": ["Geist", "sans-serif"],
+          "body-sm": ["Inter", "sans-serif"],
+          "display-lg-mobile": ["Geist", "sans-serif"],
+          "headline-md-mobile": ["Geist", "sans-serif"],
+          "headline-md": ["Geist", "sans-serif"],
+          "label-caps": ["Geist", "sans-serif"]
+        },
+        fontSize: {
+          "body-lg": ["17px", {"lineHeight": "1.65", "fontWeight": "400"}],
+          "display-lg": ["80px", {"lineHeight": "1.1", "letterSpacing": "-0.02em", "fontWeight": "600"}],
+          "body-sm": ["15px", {"lineHeight": "1.6", "fontWeight": "400"}],
+          "display-lg-mobile": ["48px", {"lineHeight": "1.1", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+          "headline-md-mobile": ["32px", {"lineHeight": "1.2", "fontWeight": "600"}],
+          "headline-md": ["40px", {"lineHeight": "1.2", "fontWeight": "600"}],
+          "label-caps": ["12px", {"lineHeight": "1", "letterSpacing": "0.05em", "fontWeight": "600"}]
+        }
+      }
+    }
+  }
+</script>
+<style>
+  body {
+    background-color: #FBF8F3;
+    color: #1c1c19;
+    -webkit-font-smoothing: antialiased;
+  }
+  .two-tone-headline span:first-child {
+    color: #C4BCB0;
+    display: block;
+  }
+  .two-tone-headline span:last-child {
+    color: #000000;
+    display: block;
+  }
+  .section-spacing {
+    padding-top: 160px;
+  }
+  @media (max-width: 768px) {
+    .section-spacing {
+      padding-top: 80px;
+    }
+  }
+
+  /* CTA — sticky scroll-driven word reveal */
+  #cta-bg-glow {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 50%, rgba(255,215,150,0.95) 0%, rgba(255,155,70,0.55) 38%, transparent 68%);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 0;
+    will-change: opacity;
+  }
+  .cta-word {
+    display: inline;
+    color: rgba(255, 210, 170, 0.48);
+    transition: color 0.35s ease, text-shadow 0.35s ease;
+  }
+  .cta-word.lit {
+    color: rgba(255, 255, 255, 1);
+    text-shadow: 0 0 22px rgba(255, 190, 90, 0.75), 0 0 48px rgba(255, 140, 40, 0.35);
+  }
+
+  /* Scroll reveal */
+  [data-reveal] {
+    opacity: 0;
+    transform: translateY(36px);
+    transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  [data-reveal].is-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  [data-reveal-delay="1"] { transition-delay: 0.1s; }
+  [data-reveal-delay="2"] { transition-delay: 0.2s; }
+  [data-reveal-delay="3"] { transition-delay: 0.3s; }
+  [data-reveal-delay="4"] { transition-delay: 0.4s; }
+  [data-reveal-delay="5"] { transition-delay: 0.5s; }
+
+  /* Step accordion */
+  .step-body {
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    transition: grid-template-rows 0.42s cubic-bezier(0.16, 1, 0.3, 1),
+                opacity 0.35s ease;
+  }
+  .step-body > p { overflow: hidden; }
+  .step-item.is-open .step-body {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+  .step-item.is-open .step-arrow {
+    transform: rotate(90deg);
+    color: var(--color-primary, #1a1a1a);
+  }
+
+  /* Fade-in only (no translate) for full-width blocks */
+  [data-reveal-fade] {
+    opacity: 0;
+    transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  [data-reveal-fade].is-visible {
+    opacity: 1;
+  }
+</style>
+</head>
+<body class="font-body-lg text-body-lg overflow-x-hidden">
+
+<!-- Nav -->
+<nav class="fixed top-0 left-0 w-full z-50 bg-background/95 backdrop-blur-sm border-b border-border-subtle">
+  <div class="flex justify-between items-center w-full px-margin-mobile md:px-margin-desktop py-6 max-w-[1200px] mx-auto">
+    <a class="font-headline-md text-headline-md-mobile md:text-headline-md tracking-tight text-primary" href="#">Noor</a>
+    <div class="hidden md:flex gap-8 items-center">
+      <a class="text-text-secondary hover:text-secondary transition-colors duration-300 font-body-lg text-body-lg" href="#services">Services</a>
+      <a class="text-text-secondary hover:text-secondary transition-colors duration-300 font-body-lg text-body-lg" href="#work">Work</a>
+      <a class="text-text-secondary hover:text-secondary transition-colors duration-300 font-body-lg text-body-lg" href="#plans">Plans</a>
+      <a class="bg-primary text-on-primary px-8 py-3 rounded-full hover:opacity-90 active:scale-95 transition-all" href="#contact">Contact Us</a>
+    </div>
+    <button class="md:hidden text-primary">
+      <span class="material-symbols-outlined">menu</span>
+    </button>
+  </div>
+</nav>
+
+<main class="pt-32">
+
+  <!-- Section 1: Hero -->
+  <section class="px-margin-mobile md:px-margin-desktop max-w-[1200px] mx-auto text-center md:text-left">
+    <div class="flex items-center gap-2 mb-8 justify-center md:justify-start" data-reveal>
+      <span class="w-2 h-2 rounded-full bg-secondary"></span>
+      <span class="font-label-caps text-label-caps uppercase text-text-secondary">Accepting 3 clients for Q3 2026 · San Antonio</span>
+    </div>
+    <h1 class="font-display-lg-mobile md:font-display-lg text-display-lg-mobile md:text-display-lg mb-8 max-w-4xl" data-reveal data-reveal-delay="1">
+      Underwrite faster. Pass on noise. <span class="text-secondary">Win the real deals.</span>
+    </h1>
+    <p class="font-body-lg text-body-lg text-text-secondary max-w-2xl mb-12" data-reveal data-reveal-delay="2">
+      We give multifamily acquisitions teams pre-broker intelligence and 48-hour OM analysis. Your analyst spends time on the deals worth modeling, not chasing public records.
+    </p>
+    <div class="flex flex-col md:flex-row gap-4 mb-24" data-reveal data-reveal-delay="3">
+      <a class="bg-primary text-on-primary px-10 py-5 rounded-full text-center font-semibold hover:opacity-90 active:scale-95 transition-all" href="#contact">Book Call</a>
+      <a class="bg-white border border-border-subtle text-primary px-10 py-5 rounded-full text-center font-semibold hover:bg-surface-variant active:scale-95 transition-all" href="#sample-report">See Sample Report</a>
+    </div>
+  </section>
+
+  <!-- Section 2: The Pain -->
+  <section class="section-spacing px-margin-mobile md:px-margin-desktop max-w-[1200px] mx-auto" id="services">
+    <div class="grid md:grid-cols-[4fr_6fr] gap-12 md:gap-gutter">
+      <div class="two-tone-headline font-headline-md-mobile md:font-headline-md text-headline-md-mobile md:text-headline-md" data-reveal>
+        <span>Most acquisitions teams aren't short on deals.</span>
+        <span>They're short on hours.</span>
+      </div>
+      <div class="space-y-12">
+        <p class="text-text-secondary font-body-lg leading-relaxed" data-reveal data-reveal-delay="1">
+          The bottleneck isn't deal flow. It's the triage window. Most analysts lose 2-3 hours per OM on public records work before they even know if a deal is worth underwriting. We eliminate that window entirely.
+        </p>
+        <div class="space-y-0" id="steps-accordion" data-reveal data-reveal-delay="2">
+
+          <div class="step-item border-b border-border-subtle">
+            <button class="w-full py-6 flex justify-between items-center text-left group" onclick="toggleStep(this.parentElement)">
+              <span class="font-headline-md-mobile text-headline-md-mobile">Pre-broker intelligence</span>
+              <span class="step-arrow text-text-faded group-hover:text-primary transition-all duration-300">→</span>
+            </button>
+            <div class="step-body">
+              <p class="text-text-secondary pb-6 leading-relaxed max-w-lg">Before a deal hits the broker network, we surface ownership structure, entity history, current debt, and portfolio signals on the seller. You know if it's worth a conversation before anyone else picks up the phone.</p>
+            </div>
+          </div>
+
+          <div class="step-item border-b border-border-subtle">
+            <button class="w-full py-6 flex justify-between items-center text-left group" onclick="toggleStep(this.parentElement)">
+              <span class="font-headline-md-mobile text-headline-md-mobile">48-hour OM analysis</span>
+              <span class="step-arrow text-text-faded group-hover:text-primary transition-all duration-300">→</span>
+            </button>
+            <div class="step-body">
+              <p class="text-text-secondary pb-6 leading-relaxed max-w-lg">Send us the OM or the address. We confirm receipt within 4 business hours, then deliver a structured one-page memo covering the debt stack, rent delta, permit flags, and comparable sales. 48-hour turnaround Monday through Thursday, 72 hours on weekends.</p>
+            </div>
+          </div>
+
+          <div class="step-item border-b border-border-subtle">
+            <button class="w-full py-6 flex justify-between items-center text-left group" onclick="toggleStep(this.parentElement)">
+              <span class="font-headline-md-mobile text-headline-md-mobile">Pursue / watchlist / pass verdict</span>
+              <span class="step-arrow text-text-faded group-hover:text-primary transition-all duration-300">→</span>
+            </button>
+            <div class="step-body">
+              <p class="text-text-secondary pb-6 leading-relaxed max-w-lg">Every memo ends with a clear signal. Pursue means move it to underwriting. Watchlist means revisit at a better basis. Pass means we tell you why and you move on. No hedging, no buried caveats.</p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 3: How it Works -->
+  <section class="section-spacing px-margin-mobile md:px-margin-desktop max-w-[1200px] mx-auto" id="work">
+    <div class="two-tone-headline font-headline-md-mobile md:font-headline-md text-headline-md-mobile md:text-headline-md mb-24" data-reveal>
+      <span>Three steps. No portal.</span>
+      <span>No software for your team to learn.</span>
+    </div>
+    <div class="grid md:grid-cols-3 gap-16">
+      <div data-reveal data-reveal-delay="1">
+        <span class="font-display-lg text-[64px] text-text-faded mb-8 block leading-none">01</span>
+        <h3 class="font-headline-md-mobile text-headline-md-mobile mb-4">Forward the OM</h3>
+        <p class="text-text-secondary">Send us the OM or the property address. We confirm receipt within 4 business hours. No portal, no intake form, no software to learn.</p>
+      </div>
+      <div data-reveal data-reveal-delay="2">
+        <span class="font-display-lg text-[64px] text-text-faded mb-8 block leading-none">02</span>
+        <h3 class="font-headline-md-mobile text-headline-md-mobile mb-4">We do the research</h3>
+        <p class="text-text-secondary">We run a full public records investigation across ownership, debt, permits, tax history, and submarket comps. Everything gets verified against primary sources.</p>
+      </div>
+      <div data-reveal data-reveal-delay="3">
+        <span class="font-display-lg text-[64px] text-text-faded mb-8 block leading-none">03</span>
+        <h3 class="font-headline-md-mobile text-headline-md-mobile mb-4">Memo in 48 hours</h3>
+        <p class="text-text-secondary">A structured one-page analysis lands in your inbox with a clear pursue, watchlist, or pass verdict. 48-hour turnaround Monday through Thursday, 72 hours on weekends.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 4: What's in the memo -->
+  <section class="section-spacing px-margin-mobile md:px-margin-desktop max-w-[1200px] mx-auto">
+    <div class="bg-surface-variant rounded-xl p-12 md:p-24" data-reveal-fade>
+      <div class="two-tone-headline font-headline-md-mobile md:font-headline-md text-headline-md-mobile md:text-headline-md mb-16" data-reveal>
+        <span>Every public signal we check</span>
+        <span>before your analyst opens the deal.</span>
+      </div>
+      <div class="grid md:grid-cols-2 gap-12 text-text-secondary">
+        <div class="space-y-8" data-reveal data-reveal-delay="1">
+          <p>Every memo goes deeper than the broker's marketing material. We look at who owns the property, how long they've held it, what their debt situation looks like, and what the county records say versus what's in the OM.</p>
+          <p>Comparable sales are verified against primary sources. If the broker's assumptions don't hold up, that shows up in the analysis before your team has spent a day on it.</p>
+        </div>
+        <div class="grid grid-cols-1 gap-4">
+          <div class="flex items-center gap-4 p-4 border border-border-subtle rounded-lg bg-background" data-reveal data-reveal-delay="1">
+            <span class="w-1.5 h-1.5 bg-secondary rounded-full"></span>
+            <span>Ownership chain &amp; hold period</span>
+          </div>
+          <div class="flex items-center gap-4 p-4 border border-border-subtle rounded-lg bg-background" data-reveal data-reveal-delay="2">
+            <span class="w-1.5 h-1.5 bg-secondary rounded-full"></span>
+            <span>Loan maturity &amp; lender type</span>
+          </div>
+          <div class="flex items-center gap-4 p-4 border border-border-subtle rounded-lg bg-background" data-reveal data-reveal-delay="3">
+            <span class="w-1.5 h-1.5 bg-secondary rounded-full"></span>
+            <span>Submarket comps &amp; rent trajectory</span>
+          </div>
+          <div class="flex items-center gap-4 p-4 border border-border-subtle rounded-lg bg-background" data-reveal data-reveal-delay="4">
+            <span class="w-1.5 h-1.5 bg-secondary rounded-full"></span>
+            <span>Permits &amp; capex history</span>
+          </div>
+          <div class="flex items-center gap-4 p-4 border border-border-subtle rounded-lg bg-background" data-reveal data-reveal-delay="4">
+            <span class="w-1.5 h-1.5 bg-secondary rounded-full"></span>
+            <span>Code violations &amp; tax delinquency</span>
+          </div>
+          <div class="flex items-center gap-4 p-4 border border-border-subtle rounded-lg bg-background" data-reveal data-reveal-delay="5">
+            <span class="w-1.5 h-1.5 bg-secondary rounded-full"></span>
+            <span>Pursue / watchlist / pass verdict</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section: Sample Report Preview -->
+  <section class="section-spacing px-margin-mobile md:px-margin-desktop max-w-[1200px] mx-auto" id="sample-report">
+    <div class="bg-[#1a1714] rounded-xl overflow-hidden" data-reveal-fade>
+      <div class="p-10 md:p-16">
+
+        <div class="flex items-center gap-2 mb-10">
+          <span class="w-1.5 h-1.5 rounded-full bg-terracotta"></span>
+          <span class="font-label-caps text-label-caps uppercase text-[#6b5e56]">Sample Deliverable</span>
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-16">
+
+          <!-- Deal summary -->
+          <div>
+            <div class="mb-8 pb-8 border-b border-white/[0.08]">
+              <p class="text-[#6b5e56] text-sm mb-2">San Antonio, TX · 42 units · Asking $6.2M</p>
+              <h3 class="text-white text-2xl font-semibold mb-5">2847 Commerce St</h3>
+              <span class="inline-flex items-center gap-2 bg-terracotta/15 text-terracotta border border-terracotta/25 px-4 py-1.5 rounded-full text-xs font-semibold tracking-wide uppercase">● Pursue</span>
+            </div>
+            <div>
+              <div class="flex justify-between items-baseline gap-8 py-4 border-b border-white/[0.06]">
+                <span class="text-[#6b5e56] text-sm shrink-0">Ownership</span>
+                <span class="text-[#d4c8c0] text-sm text-right">Clear chain · 7-yr hold · no distress</span>
+              </div>
+              <div class="flex justify-between items-baseline gap-8 py-4 border-b border-white/[0.06]">
+                <span class="text-[#6b5e56] text-sm shrink-0">Debt</span>
+                <span class="text-[#d4c8c0] text-sm text-right">$3.1M @ 5.2% · matures Q3 2027</span>
+              </div>
+              <div class="flex justify-between items-baseline gap-8 py-4 border-b border-white/[0.06]">
+                <span class="text-[#6b5e56] text-sm shrink-0">Rent delta</span>
+                <span class="text-terracotta text-sm text-right font-medium">$184 below submarket avg</span>
+              </div>
+              <div class="flex justify-between items-baseline gap-8 py-4 border-b border-white/[0.06]">
+                <span class="text-[#6b5e56] text-sm shrink-0">Permits</span>
+                <span class="text-[#d4c8c0] text-sm text-right">No open violations</span>
+              </div>
+              <div class="flex justify-between items-baseline gap-8 py-4">
+                <span class="text-[#6b5e56] text-sm shrink-0">Comps</span>
+                <span class="text-[#d4c8c0] text-sm text-right">3 sales within 0.5mi · 4.8% avg cap</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Signal confidence bars -->
+          <div>
+            <p class="text-[#6b5e56] font-label-caps text-label-caps uppercase mb-8">Signal confidence</p>
+            <div class="space-y-7" id="signal-bars">
+              <div class="signal-bar-row" data-score="90">
+                <div class="flex justify-between text-sm mb-2.5">
+                  <span class="text-[#8a7868]">Ownership clarity</span>
+                  <span class="text-white/60 tabular-nums">9 / 10</span>
+                </div>
+                <div class="rounded-full overflow-hidden" style="height:2px;background:rgba(255,255,255,0.07)">
+                  <div class="signal-bar h-full rounded-full" style="width:0%;background:#C66A3D"></div>
+                </div>
+              </div>
+              <div class="signal-bar-row" data-score="70">
+                <div class="flex justify-between text-sm mb-2.5">
+                  <span class="text-[#8a7868]">Debt health</span>
+                  <span class="text-white/60 tabular-nums">7 / 10</span>
+                </div>
+                <div class="rounded-full overflow-hidden" style="height:2px;background:rgba(255,255,255,0.07)">
+                  <div class="signal-bar h-full rounded-full" style="width:0%;background:#C66A3D"></div>
+                </div>
+              </div>
+              <div class="signal-bar-row" data-score="90">
+                <div class="flex justify-between text-sm mb-2.5">
+                  <span class="text-[#8a7868]">Rent upside</span>
+                  <span class="text-white/60 tabular-nums">9 / 10</span>
+                </div>
+                <div class="rounded-full overflow-hidden" style="height:2px;background:rgba(255,255,255,0.07)">
+                  <div class="signal-bar h-full rounded-full" style="width:0%;background:#C66A3D"></div>
+                </div>
+              </div>
+              <div class="signal-bar-row" data-score="80">
+                <div class="flex justify-between text-sm mb-2.5">
+                  <span class="text-[#8a7868]">Permit risk</span>
+                  <span class="text-white/60 tabular-nums">8 / 10</span>
+                </div>
+                <div class="rounded-full overflow-hidden" style="height:2px;background:rgba(255,255,255,0.07)">
+                  <div class="signal-bar h-full rounded-full" style="width:0%;background:#C66A3D"></div>
+                </div>
+              </div>
+              <div class="signal-bar-row" data-score="80">
+                <div class="flex justify-between text-sm mb-2.5">
+                  <span class="text-[#8a7868]">Comp confidence</span>
+                  <span class="text-white/60 tabular-nums">8 / 10</span>
+                </div>
+                <div class="rounded-full overflow-hidden" style="height:2px;background:rgba(255,255,255,0.07)">
+                  <div class="signal-bar h-full rounded-full" style="width:0%;background:#C66A3D"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <p class="mt-14 text-[#3d3530] text-xs">Illustrative output. Format and data points match actual deliverables.</p>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 5: Who we work with -->
+  <section class="section-spacing px-margin-mobile md:px-margin-desktop max-w-[1200px] mx-auto text-center">
+    <div class="two-tone-headline font-headline-md-mobile md:font-headline-md text-headline-md-mobile md:text-headline-md mb-12" data-reveal>
+      <span>Built for teams already getting deal flow.</span>
+      <span>Not a database. Not a lead-gen pitch.</span>
+    </div>
+    <p class="max-w-[720px] mx-auto text-text-secondary leading-relaxed" data-reveal data-reveal-delay="2">
+      We work with multifamily syndicators and private equity firms in the Texas market. If your team is already seeing deal flow, we help you triage it faster. We're not a lead-gen service. We help you cut the bad deals before your analyst has spent a day on them.
+    </p>
+  </section>
+
+  <!-- Section 6: Pricing -->
+  <section class="section-spacing px-margin-mobile md:px-margin-desktop max-w-[1200px] mx-auto" id="plans">
+    <div class="two-tone-headline font-headline-md-mobile md:font-headline-md text-headline-md-mobile md:text-headline-md mb-24" data-reveal>
+      <span>Two ways to start.</span>
+      <span>Pick what fits.</span>
+    </div>
+    <div class="grid md:grid-cols-2 gap-gutter">
+      <!-- Retainer Card -->
+      <div class="bg-terracotta p-12 rounded-xl text-white flex flex-col h-full" data-reveal data-reveal-delay="1">
+        <span class="font-label-caps text-label-caps uppercase tracking-widest opacity-80 mb-4">Dedicated Support</span>
+        <h3 class="font-headline-md mb-8">The Acquisition Desk</h3>
+        <div class="text-display-lg-mobile md:text-headline-md font-bold mb-8">$4,000<span class="text-body-lg font-normal opacity-80">/month</span></div>
+        <ul class="space-y-4 mb-12 flex-grow">
+          <li class="flex items-center gap-3">○ Up to 4 OM analyses/month included</li>
+          <li class="flex items-center gap-3">○ 48-hr turnaround Mon–Thu, 72-hr weekends</li>
+          <li class="flex items-center gap-3">○ Direct Slack and email access</li>
+          <li class="flex items-center gap-3">○ Weekly pre-broker candidate list</li>
+        </ul>
+        <a class="w-full py-5 bg-white text-primary rounded-full text-center font-bold hover:opacity-90 transition-all" href="#contact">Get Started</a>
+      </div>
+      <!-- One-off Card -->
+      <div class="bg-surface-variant border border-border-subtle p-12 rounded-xl flex flex-col h-full" data-reveal data-reveal-delay="2">
+        <span class="font-label-caps text-label-caps uppercase tracking-widest text-text-secondary mb-4">On-Demand</span>
+        <h3 class="font-headline-md mb-8">Single Deal Memo</h3>
+        <div class="text-display-lg-mobile md:text-headline-md font-bold mb-8">$500<span class="text-body-lg font-normal text-text-secondary">/memo</span></div>
+        <ul class="space-y-4 mb-12 flex-grow text-text-secondary">
+          <li class="flex items-center gap-3">○ Full public records pull</li>
+          <li class="flex items-center gap-3">○ 48-hr turnaround Mon–Thu, 72-hr weekends</li>
+          <li class="flex items-center gap-3">○ Ownership, loan, permits, tax, comps</li>
+          <li class="flex items-center gap-3">○ Pursue / watchlist / pass verdict</li>
+        </ul>
+        <a class="w-full py-5 border border-primary text-primary rounded-full text-center font-bold hover:bg-white transition-all" href="#contact">Order Single Memo</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 7: FAQ -->
+  <section class="section-spacing px-margin-mobile md:px-margin-desktop max-w-[1200px] mx-auto">
+    <div class="grid md:grid-cols-[4fr_6fr] gap-16">
+      <div data-reveal>
+        <div class="two-tone-headline font-headline-md-mobile md:font-headline-md text-headline-md-mobile md:text-headline-md mb-8">
+          <span>Frequently</span>
+          <span>Given Answers.</span>
+        </div>
+        <p class="text-text-secondary mb-8">If your question isn't covered, we're happy to discuss your specific workflow on a brief call.</p>
+        <a class="inline-flex items-center gap-4 bg-white border border-border-subtle px-8 py-4 rounded-full text-primary hover:bg-surface-variant transition-all" href="mailto:gurnoor@noor-acq.com">
+          <span class="font-semibold">Chat with Noor</span>
+        </a>
+      </div>
+      <div class="space-y-4">
+        <details class="group border-b border-border-subtle pb-6" open data-reveal data-reveal-delay="1">
+          <summary class="list-none cursor-pointer flex justify-between items-center font-semibold text-xl">
+            Does this replace our analysts?
+            <span class="material-symbols-outlined group-open:rotate-180 transition-transform">expand_more</span>
+          </summary>
+          <div class="pt-6 text-text-secondary leading-relaxed">
+            No. It makes them more effective. Instead of spending 2-3 hours on public records work per OM, they get a verified memo and go straight into the underwriting that actually requires their expertise.
+          </div>
+        </details>
+        <details class="group border-b border-border-subtle pb-6" data-reveal data-reveal-delay="2">
+          <summary class="list-none cursor-pointer flex justify-between items-center font-semibold text-xl">
+            Where do you get your data?
+            <span class="material-symbols-outlined group-open:rotate-180 transition-transform">expand_more</span>
+          </summary>
+          <div class="pt-6 text-text-secondary leading-relaxed">
+            A combination of county clerk filings, property data providers, and local permit databases. We verify against primary sources rather than relying on third-party aggregators that are often incomplete or out of date.
+          </div>
+        </details>
+        <details class="group border-b border-border-subtle pb-6" data-reveal data-reveal-delay="3">
+          <summary class="list-none cursor-pointer flex justify-between items-center font-semibold text-xl">
+            Which submarkets do you cover?
+            <span class="material-symbols-outlined group-open:rotate-180 transition-transform">expand_more</span>
+          </summary>
+          <div class="pt-6 text-text-secondary leading-relaxed">
+            San Antonio is our primary market, with Austin coverage expanding shortly. We built our data infrastructure around Texas specifically. Additional Sun Belt markets are on the roadmap.
+          </div>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 8: Final CTA — sticky scroll-driven -->
+  <section id="cta-section" class="relative" style="height: 300vh; margin-top: 160px;">
+    <div id="cta-sticky" class="sticky top-0 h-screen flex items-center">
+      <div id="cta-box" class="mx-[20px] md:mx-[64px] w-full bg-gradient-to-br from-[#f5e2c8] via-[#d4845a] to-[#8a3a18] p-12 md:p-24 rounded-xl relative overflow-hidden">
+        <div id="cta-bg-glow"></div>
+        <div class="max-w-3xl relative z-10">
+          <h2 id="cta-headline" class="font-display-lg-mobile md:font-display-lg text-display-lg-mobile md:text-display-lg mb-12 leading-tight">
+            <span class="cta-word">You're</span> <span class="cta-word">closing</span> <span class="cta-word">the</span> <span class="cta-word">deals.</span> <span class="cta-word">We're</span> <span class="cta-word">handling</span> <span class="cta-word">the</span> <span class="cta-word">research</span> <span class="cta-word">that</span> <span class="cta-word">gets</span> <span class="cta-word">you</span> <span class="cta-word">there.</span> <span class="cta-word">Sound</span> <span class="cta-word">good?</span>
+          </h2>
+          <div id="cta-buttons" class="flex flex-col md:flex-row gap-4" style="opacity: 0.15;">
+            <a class="bg-primary text-on-primary px-10 py-5 rounded-full text-center font-semibold hover:opacity-90 active:scale-95 transition-all" href="#contact">Book Call</a>
+            <a class="bg-white/10 backdrop-blur-md border border-white/20 text-white px-10 py-5 rounded-full text-center font-semibold hover:bg-white/20 active:scale-95 transition-all" href="#sample-report">See Sample Report</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Section 9: Let's Talk -->
+  <section class="section-spacing px-margin-mobile md:px-margin-desktop max-w-[1200px] mx-auto" id="contact">
+    <div class="grid md:grid-cols-2 gap-16 items-center">
+      <div>
+        <h2 class="font-headline-md text-headline-md mb-8">Let's talk acquisitions.</h2>
+        <p class="text-text-secondary mb-12 max-w-md">
+          In 20 minutes we can walk through what the analysis looks like on a real deal and whether it fits your current pipeline. No pitch, just a straightforward conversation.
+        </p>
+        <div class="space-y-6">
+          <div class="flex items-center gap-4 text-text-secondary">
+            <span class="w-12 h-12 flex items-center justify-center rounded-full bg-surface-variant border border-border-subtle">
+              <span class="material-symbols-outlined">schedule</span>
+            </span>
+            <span>20-minute strategy session</span>
+          </div>
+          <div class="flex items-center gap-4 text-text-secondary">
+            <span class="w-12 h-12 flex items-center justify-center rounded-full bg-surface-variant border border-border-subtle">
+              <span class="material-symbols-outlined">map</span>
+            </span>
+            <span>Sun Belt market deep-dive</span>
+          </div>
+        </div>
+      </div>
+      <div class="bg-primary-container rounded-xl" style="height:620px;overflow-y:auto;overflow-x:hidden;">
+        <div id="cal-inline" style="width:100%;min-height:900px;"></div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- Footer -->
+<footer class="mt-32 border-t border-border-subtle py-24 bg-surface-variant">
+  <div class="max-w-[1200px] mx-auto px-margin-mobile md:px-margin-desktop">
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
+      <div class="font-headline-md tracking-tight text-primary">Noor</div>
+      <div class="flex flex-wrap gap-8 text-text-secondary">
+        <a class="hover:text-primary transition-colors" href="mailto:gurnoor@noor-acq.com">gurnoor@noor-acq.com</a>
+        <a class="hover:text-primary transition-colors" href="mailto:eknoor.natt93@gmail.com">Email Updates</a>
+      </div>
+    </div>
+    <div class="mt-12 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 text-text-faded text-sm">
+      <p>© 2026 Noor · San Antonio · Austin</p>
+      <div class="flex gap-6">
+        <a class="hover:underline" href="/privacy">Privacy Policy</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script>
+  // ── Cal.com inline embed ───────────────────────────────────────────────
+  (function (C, A, L) {
+    let p = function (a, ar) { a.q.push(ar); };
+    let d = C.document;
+    C.Cal = C.Cal || function () {
+      let cal = C.Cal;
+      let ar = arguments;
+      if (!cal.loaded) {
+        cal.ns = {};
+        cal.q = cal.q || [];
+        d.head.appendChild(d.createElement("script")).src = A;
+        cal.loaded = true;
+      }
+      if (ar[0] === L) {
+        const api = function () { p(api, arguments); };
+        const namespace = ar[1];
+        api.q = api.q || [];
+        if (typeof namespace === "string") {
+          cal.ns[namespace] = cal.ns[namespace] || api;
+          p(cal.ns[namespace], ar);
+          p(cal, ["initNamespace", namespace]);
+        } else p(cal, ar);
+        return;
+      }
+      p(cal, ar);
+    };
+  })(window, "https://app.cal.com/embed/embed.js", "init");
+
+  Cal("init", { origin: "https://cal.com" });
+  Cal("inline", {
+    elementOrSelector: "#cal-inline",
+    calLink: "gurnoor-natt-cbar7y/discovery-call",
+    config: {
+      layout: "month_view"
+    }
+  });
+  Cal("ui", {
+    styles: { branding: { brandColor: "#98471d" } },
+    hideEventTypeDetails: false,
+    layout: "month_view"
+  });
+</script>
+
+<script>
+  // ── Scroll reveal (Intersection Observer) ──────────────────────────────
+  const revealObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('is-visible');
+        revealObserver.unobserve(entry.target);
+      }
+    });
+  }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+
+  document.querySelectorAll('[data-reveal], [data-reveal-fade]').forEach((el) => {
+    revealObserver.observe(el);
+  });
+
+  // ── CTA sticky scroll-driven word reveal ──────────────────────────────
+  const ctaSection = document.getElementById('cta-section');
+  const ctaBox     = document.getElementById('cta-box');
+  const ctaBgGlow  = document.getElementById('cta-bg-glow');
+  const ctaButtons = document.getElementById('cta-buttons');
+  const ctaWords   = document.querySelectorAll('.cta-word');
+
+  function lerp(a, b, t) { return a + (b - a) * Math.min(1, Math.max(0, t)); }
+  function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
+
+  function updateCTA() {
+    const rect       = ctaSection.getBoundingClientRect();
+    const scrollable = ctaSection.offsetHeight - window.innerHeight;
+    // p: 0 → 1 as section scrolls through
+    const p = clamp(-rect.top / scrollable, 0, 1);
+
+    // Each word lights up in reading order across p = 0.04 → 0.88
+    const total = ctaWords.length;
+    ctaWords.forEach((word, i) => {
+      const trigger = 0.04 + (i / (total - 1)) * 0.84;
+      if (p >= trigger) {
+        word.classList.add('lit');
+      } else {
+        word.classList.remove('lit');
+      }
+    });
+
+    // Background glow brightens — kept subtle so it doesn't wash out the text
+    ctaBgGlow.style.opacity = lerp(0, 0.38, clamp(p * 1.25, 0, 1)).toFixed(3);
+
+    // Box brightness — gentle lift only
+    ctaBox.style.filter = `brightness(${lerp(0.92, 1.06, p).toFixed(3)})`;
+
+    // Buttons appear after last word
+    ctaButtons.style.opacity = lerp(0.15, 1, clamp((p - 0.82) / 0.18, 0, 1)).toFixed(3);
+  }
+
+  window.addEventListener('scroll', updateCTA, { passive: true });
+  updateCTA();
+
+  // ── Step accordion (per-step scroll trigger + manual) ──────────────────
+  function toggleStep(item) {
+    item.classList.toggle('is-open');
+  }
+
+  (function() {
+    // Each step gets its own observer — opens exactly when that step
+    // scrolls into the lower-middle of the viewport, one at a time.
+    document.querySelectorAll('#steps-accordion .step-item').forEach((step) => {
+      const obs = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            setTimeout(() => step.classList.add('is-open'), 120);
+            obs.disconnect();
+          }
+        });
+      }, {
+        threshold: 0,
+        rootMargin: '0px 0px -28% 0px'  // fires when step clears 28% from bottom
+      });
+      obs.observe(step);
+    });
+  })();
+
+  // ── FAQ Accordion ───────────────────────────────────────────────────────
+  document.querySelectorAll('details').forEach((el) => {
+    el.addEventListener('toggle', () => {
+      if (el.open) {
+        document.querySelectorAll('details').forEach((other) => {
+          if (other !== el) other.open = false;
+        });
+      }
+    });
+  });
+
+  // ── Nav shadow ─────────────────────────────────────────────────────────
+  window.addEventListener('scroll', () => {
+    document.querySelector('nav').classList.toggle('shadow-sm', window.scrollY > 20);
+  }, { passive: true });
+
+  // ── Signal bars scroll animation ───────────────────────────────────────
+  (function() {
+    const container = document.getElementById('signal-bars');
+    if (!container) return;
+    const obs = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        container.querySelectorAll('.signal-bar-row').forEach((row, i) => {
+          const bar = row.querySelector('.signal-bar');
+          setTimeout(() => {
+            bar.style.transition = 'width 0.9s cubic-bezier(0.16, 1, 0.3, 1)';
+            bar.style.width = row.dataset.score + '%';
+          }, i * 130);
+        });
+        obs.disconnect();
+      });
+    }, { threshold: 0.4 });
+    obs.observe(container);
+  })();
+</script>
+</body>
+</html>

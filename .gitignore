@@ -4,3 +4,4 @@ __pycache__/
 .env
 uv.lock
 reports/*.md
+.DS_Store
