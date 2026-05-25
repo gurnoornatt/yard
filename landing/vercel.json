@@ -4,6 +4,7 @@
   "cleanUrls": true,
   "trailingSlash": false,
   "rewrites": [
-    { "source": "/webhooks/cal", "destination": "/api/webhooks/cal" }
+    { "source": "/webhooks/cal", "destination": "/api/webhooks/cal" },
+    { "source": "/api/submit", "destination": "/api/submit" }
   ]
 }

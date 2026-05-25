@@ -442,7 +442,10 @@
 
         </div>
 
-        <p class="mt-14 text-[#3d3530] text-xs">Illustrative output. Format and data points match actual deliverables.</p>
+        <div class="mt-10 pt-8 border-t border-white/[0.08] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <p class="text-[#3d3530] text-sm">Illustrative output. Format and data points match actual deliverables.</p>
+          <button onclick="openMemoModal()" class="shrink-0 bg-terracotta text-white px-7 py-3 rounded-full text-sm font-semibold hover:opacity-90 active:scale-95 transition-all">Get the Full Memo →</button>
+        </div>
 
       </div>
     </div>
@@ -608,6 +611,54 @@
   </div>
 </footer>
 
+<!-- Memo request modal -->
+<div id="memo-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 hidden" aria-modal="true" role="dialog">
+  <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeMemoModal()"></div>
+  <div class="relative bg-[#1a1714] rounded-xl w-full max-w-md p-10 shadow-2xl">
+
+    <!-- Default state -->
+    <div id="memo-form-state">
+      <button onclick="closeMemoModal()" class="absolute top-6 right-6 text-[#4d4541] hover:text-white transition-colors text-xl leading-none">✕</button>
+      <div class="flex items-center gap-2 mb-6">
+        <span class="w-1.5 h-1.5 rounded-full bg-terracotta"></span>
+        <span class="font-label-caps text-label-caps uppercase text-[#6b5e56]" style="font-size:11px;letter-spacing:0.06em;">Sample Memo</span>
+      </div>
+      <h3 class="text-white text-2xl font-semibold mb-2" style="font-family: Geist, sans-serif;">Get the full memo.</h3>
+      <p class="text-[#6b5e56] text-sm mb-8 leading-relaxed">We'll email you a real one-page OM analysis — same format, same sections, same verdict structure.</p>
+
+      <form id="memo-form" onsubmit="submitMemoForm(event)" novalidate class="space-y-4">
+        <div>
+          <input type="email" id="memo-email" placeholder="Work email" required
+            class="w-full bg-white/[0.05] border border-white/[0.1] rounded-lg px-4 py-3 text-white placeholder-[#4d4541] text-sm focus:outline-none focus:border-terracotta/60 transition-colors"/>
+          <p id="memo-email-error" class="text-red-400 text-xs mt-1.5 hidden">Enter a valid email address.</p>
+        </div>
+        <input type="text" id="memo-firm" placeholder="Firm name (optional)"
+          class="w-full bg-white/[0.05] border border-white/[0.1] rounded-lg px-4 py-3 text-white placeholder-[#4d4541] text-sm focus:outline-none focus:border-terracotta/60 transition-colors"/>
+        <select id="memo-submarket"
+          class="w-full bg-[#1a1714] border border-white/[0.1] rounded-lg px-4 py-3 text-[#4d4541] text-sm focus:outline-none focus:border-terracotta/60 transition-colors appearance-none">
+          <option value="">Target submarket (optional)</option>
+          <option value="San Antonio">San Antonio</option>
+          <option value="Austin">Austin</option>
+          <option value="Other">Other Sun Belt</option>
+        </select>
+        <button type="submit" id="memo-submit"
+          class="w-full bg-terracotta text-white py-3.5 rounded-full font-semibold text-sm hover:opacity-90 active:scale-95 transition-all mt-2">
+          <span id="memo-submit-label">Send me the memo</span>
+        </button>
+      </form>
+    </div>
+
+    <!-- Thank-you state -->
+    <div id="memo-thanks-state" class="hidden text-center py-4">
+      <div class="w-12 h-12 rounded-full bg-terracotta/15 border border-terracotta/25 flex items-center justify-center mx-auto mb-6 text-xl">✓</div>
+      <h3 class="text-white text-xl font-semibold mb-3" style="font-family: Geist, sans-serif;">Check your inbox.</h3>
+      <p class="text-[#6b5e56] text-sm mb-8 leading-relaxed">The memo is on its way. If you have a live OM to evaluate, book a call and we'll walk through it.</p>
+      <a href="#contact" onclick="closeMemoModal()" class="inline-block bg-white text-primary px-8 py-3.5 rounded-full font-semibold text-sm hover:opacity-90 transition-all">Book the call</a>
+    </div>
+
+  </div>
+</div>
+
 <script>
   // ── Cal.com inline embed ───────────────────────────────────────────────
   (function (C, A, L) {
@@ -746,6 +797,56 @@
   window.addEventListener('scroll', () => {
     document.querySelector('nav').classList.toggle('shadow-sm', window.scrollY > 20);
   }, { passive: true });
+
+  // ── Memo modal ─────────────────────────────────────────────────────────
+  function openMemoModal() {
+    document.getElementById('memo-modal').classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeMemoModal() {
+    document.getElementById('memo-modal').classList.add('hidden');
+    document.body.style.overflow = '';
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeMemoModal();
+  });
+
+  async function submitMemoForm(e) {
+    e.preventDefault();
+    const email = document.getElementById('memo-email').value.trim();
+    const firm = document.getElementById('memo-firm').value.trim();
+    const submarket = document.getElementById('memo-submarket').value;
+    const errEl = document.getElementById('memo-email-error');
+    const btn = document.getElementById('memo-submit');
+    const label = document.getElementById('memo-submit-label');
+
+    errEl.classList.add('hidden');
+    if (!email || !email.includes('@')) {
+      errEl.classList.remove('hidden');
+      return;
+    }
+
+    btn.disabled = true;
+    label.textContent = 'Sending…';
+
+    try {
+      const res = await fetch('/api/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, firm, submarket }),
+      });
+      if (!res.ok) throw new Error('server error');
+      document.getElementById('memo-form-state').classList.add('hidden');
+      document.getElementById('memo-thanks-state').classList.remove('hidden');
+    } catch {
+      label.textContent = 'Send me the memo';
+      btn.disabled = false;
+      errEl.textContent = 'Something went wrong — try again.';
+      errEl.classList.remove('hidden');
+    }
+  }
 
   // ── Signal bars scroll animation ───────────────────────────────────────
   (function() {

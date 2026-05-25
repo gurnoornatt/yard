@@ -15,7 +15,7 @@ import subprocess
 from collections import defaultdict
 from datetime import datetime, timezone
 
-CAL_API_KEY = os.getenv("CAL_API_KEY", "cal_live_39312ce66f64d8fc4e25dbe30a23f05a")
+CAL_API_KEY = os.getenv("CAL_API_KEY", "")
 BASE = "https://api.cal.com/v2"
 
 
