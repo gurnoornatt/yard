@@ -8,7 +8,7 @@ import resend
 
 resend.api_key = os.environ.get("RESEND_API_KEY", "")
 
-FROM_ADDRESS = "gurnoor@noor-acq.com"
+FROM_ADDRESS = "gurnoor@nidoandkey.com"
 
 _MONTHLY_BODY = """\
 <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
@@ -26,7 +26,7 @@ _MONTHLY_BODY = """\
     Loan maturity figures are estimates based on origination dates from public deed records.
     Texas is a non-disclosure state — recent sale prices are not available from public sources.
   </p>
-  <p style="font-size:14px;margin-top:16px">— Noor Acquisitions</p>
+  <p style="font-size:14px;margin-top:16px">— Nido & Key</p>
 </div>
 """
 
@@ -47,7 +47,7 @@ _OM_BODY = """\
     All figures cited include their data source. Numbers marked "calculated from OM"
     are derived from PDF text; verify independently before underwriting a purchase.
   </p>
-  <p style="font-size:14px;margin-top:16px">— Noor Acquisitions</p>
+  <p style="font-size:14px;margin-top:16px">— Nido & Key</p>
 </div>
 """
 

@@ -51,15 +51,15 @@ def _send_email(email: str) -> None:
         return
 
     body: dict = {
-        "from": "Noor <gurnoor@noor-acq.com>",
+        "from": "Noor <gurnoor@nidoandkey.com>",
         "to": [email],
         "subject": "Your sample OM analysis — Noor",
         "text": (
             "Hi,\n\n"
             "Attached is a sample one-page OM analysis — same format we deliver on every deal.\n\n"
-            "If you have an OM you're evaluating right now, forward it to gurnoor@noor-acq.com "
+            "If you have an OM you're evaluating right now, forward it to gurnoor@nidoandkey.com "
             "and I'll turn it around within 48 hours, no charge for the first one.\n\n"
-            "— Noor"
+            "— Nido & Key"
         ),
     }
 
