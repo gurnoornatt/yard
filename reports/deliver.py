@@ -8,7 +8,7 @@ import resend
 
 resend.api_key = os.environ.get("RESEND_API_KEY", "")
 
-FROM_ADDRESS = "gurnoor@nidoandkey.com"
+FROM_ADDRESS = "noor@nidoandkey.com"
 
 _MONTHLY_BODY = """\
 <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:560px;margin:0 auto;color:#1a1a1a">
