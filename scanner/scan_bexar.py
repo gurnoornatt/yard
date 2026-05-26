@@ -36,10 +36,8 @@ log = logging.getLogger("scanner")
 ATTOM_KEY = os.environ.get("ATTOM_API_KEY", "")
 ATTOM_BASE = "https://api.gateway.attomdata.com/propertyapi/v1.0.0"
 
-# San Antonio city center
-SA_LAT = 29.4241
-SA_LON = -98.4936
-RADIUS_MI = 20
+# Bexar County FIPS geoid — covers entire county, no radius tiling needed
+BEXAR_GEOID = "CO48029"
 
 
 def _attom_headers() -> dict:
@@ -47,18 +45,20 @@ def _attom_headers() -> dict:
 
 
 def fetch_all_multifamily() -> list[dict]:
-    """Paginate through ATTOM snapshot endpoint for all SA multifamily."""
+    """Paginate through ATTOM assessment snapshot for all Bexar County apartments.
+
+    Uses county geoid (CO48029) — avoids radius timeouts, full county coverage.
+    Returns assessed value + tax + year built per property.
+    """
     results = []
     page = 1
     while True:
         try:
             r = httpx.get(
-                f"{ATTOM_BASE}/sale/snapshot",
+                f"{ATTOM_BASE}/assessment/snapshot",
                 params={
-                    "latitude": SA_LAT,
-                    "longitude": SA_LON,
-                    "radius": RADIUS_MI,
-                    "PROPERTYTYPE": "apartment|multi+family",
+                    "geoid": BEXAR_GEOID,
+                    "propertytype": "APARTMENT",
                     "pageSize": 100,
                     "page": page,
                 },
@@ -80,6 +80,32 @@ def fetch_all_multifamily() -> list[dict]:
             log.error("ATTOM fetch error page %d: %s", page, e)
             break
     return results
+
+
+def fetch_sale_dates(attom_ids: list[str]) -> dict[str, dict]:
+    """Fetch sale history for a specific list of attomIds.
+
+    Uses the property/detail endpoint one-by-one (only called for top-N shortlist).
+    Returns dict keyed by attomId with the 'sale' dict.
+    """
+    result: dict[str, dict] = {}
+    for aid in attom_ids:
+        try:
+            r = httpx.get(
+                f"{ATTOM_BASE}/property/detail",
+                params={"attomId": aid},
+                headers=_attom_headers(),
+                timeout=20,
+            )
+            if r.status_code == 200:
+                props = r.json().get("property") or []
+                if props:
+                    sale = props[0].get("sale") or {}
+                    result[aid] = sale
+        except Exception as e:
+            log.warning("  sale date fetch failed for %s: %s", aid, e)
+        time.sleep(0.2)
+    return result
 
 
 def _load_skill(name: str):
@@ -163,7 +189,7 @@ def main() -> None:
     args = parser.parse_args()
 
     log.info("=== Bexar County Multifamily Scanner ===")
-    log.info("Fetching properties from ATTOM (radius %dmi)...", RADIUS_MI)
+    log.info("Fetching apartments from ATTOM (Bexar County geoid=%s)...", BEXAR_GEOID)
     raw_properties = fetch_all_multifamily()
     log.info("Fetched %d properties", len(raw_properties))
 
@@ -171,10 +197,26 @@ def main() -> None:
         log.error("No properties returned from ATTOM. Check API key and quota.")
         sys.exit(1)
 
-    # Score all
+    # Score all (first pass — no sale dates yet)
     scored = [score_property(p) for p in raw_properties]
     scored.sort(key=lambda x: x.score, reverse=True)
-    top_n = scored[:args.top]
+
+    # Enrich top 2×N candidates with sale dates before final sort
+    candidate_ids = [p.attom_id for p in scored[:args.top * 2] if p.attom_id]
+    if candidate_ids:
+        log.info("Fetching sale dates for top %d candidates...", len(candidate_ids))
+        sale_map = fetch_sale_dates(candidate_ids)
+        enriched_raws = []
+        for p in scored[:args.top * 2]:
+            raw = dict(p.raw)
+            if p.attom_id in sale_map:
+                raw["sale"] = sale_map[p.attom_id]
+            enriched_raws.append(raw)
+        rescored = [score_property(r) for r in enriched_raws]
+        rescored.sort(key=lambda x: x.score, reverse=True)
+        top_n = rescored[:args.top]
+    else:
+        top_n = scored[:args.top]
 
     log.info("Top %d by score:", len(top_n))
     for i, p in enumerate(top_n[:10], 1):
