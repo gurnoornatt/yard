@@ -50,10 +50,13 @@ def _send_email(email: str) -> None:
         print("Resend not configured")
         return
 
-    body: dict = {
+    import resend as _resend
+    _resend.api_key = RESEND_API_KEY
+
+    params: dict = {
         "from": "Noor <noor@nidoandkey.com>",
         "to": [email],
-        "subject": "Your sample OM analysis — Noor",
+        "subject": "Your sample OM analysis — Nido & Key",
         "text": (
             "Hi,\n\n"
             "Attached is a sample one-page OM analysis — same format we deliver on every deal.\n\n"
@@ -65,18 +68,14 @@ def _send_email(email: str) -> None:
 
     if PDF_PATH.exists():
         pdf_b64 = base64.b64encode(PDF_PATH.read_bytes()).decode()
-        body["attachments"] = [
-            {"filename": "sample-memo.pdf", "content": pdf_b64}
+        params["attachments"] = [
+            {"filename": "Nido_Key_Sample_Analysis.pdf", "content": pdf_b64}
         ]
     else:
         print("sample-memo.pdf not found — sending without attachment")
 
-    result = _post(
-        "https://api.resend.com/emails",
-        body,
-        {"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
-    )
-    print(f"Resend response: {result}")
+    resp = _resend.Emails.send(params)
+    print(f"Resend response: {resp}")
 
 
 def _slack_alert(email: str, firm: str, submarket: str) -> None:
