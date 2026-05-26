@@ -60,7 +60,7 @@ def _get_census_b25031(zip_code: str) -> dict:
         if len(rows) < 2:
             return {}
         header, values = rows[0], rows[1]
-        d = dict(zip(header, values))
+        d = dict(zip(header, values, strict=False))
         return {
             "all": _safe_int(d.get("B25031_001E")),
             "studio": _safe_int(d.get("B25031_002E")),

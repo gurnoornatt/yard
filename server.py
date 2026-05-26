@@ -8,7 +8,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent / ".env")
@@ -94,7 +94,7 @@ async def call_skill_async(name: str, params: dict) -> dict:
                 proc.communicate(input=json.dumps(params).encode()),
                 timeout=60.0,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             proc.kill()
             log.warning("  %s subprocess timed out", name)
             return {

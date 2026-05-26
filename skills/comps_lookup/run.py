@@ -65,7 +65,7 @@ def _get_market(zip_: str) -> dict:
         if len(rows) < 2:
             return {}
         header, values = rows[0], rows[1]
-        d = dict(zip(header, values))
+        d = dict(zip(header, values, strict=False))
 
         def _si(val) -> int | None:
             try:
