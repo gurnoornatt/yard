@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+@page {
+  size: A4;
+  margin: 18mm 18mm 20mm 18mm;
+  @bottom-left {
+    content: "Confidential — Noor Acquisitions";
+    font-family: -apple-system, 'Segoe UI', sans-serif;
+    font-size: 8px;
+    color: #94a3b8;
+  }
+  @bottom-right {
+    content: "Page " counter(page) " of " counter(pages);
+    font-family: -apple-system, 'Segoe UI', sans-serif;
+    font-size: 8px;
+    color: #94a3b8;
+  }
+}
+@page :first { @bottom-left { content: none; } @bottom-right { content: none; } }
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, 'Segoe UI', 'Helvetica Neue', sans-serif;
+  font-size: 10.5px;
+  line-height: 1.55;
+  color: #1a1a1a;
+}
+
+/* ── Header ── */
+.header {
+  background: #1e3a5f;
+  color: white;
+  padding: 28px 32px 22px;
+}
+.header-label {
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #93c5fd;
+  margin-bottom: 8px;
+}
+.header-address {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+}
+.header-sub {
+  font-size: 12px;
+  color: #bfdbfe;
+  margin-top: 4px;
+}
+.verdict-badge {
+  display: inline-block;
+  margin-top: 14px;
+  padding: 6px 16px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+.verdict-PURSUE    { background: #dcfce7; color: #166534; }
+.verdict-WATCHLIST { background: #fef3c7; color: #92400e; }
+.verdict-PASS      { background: #fee2e2; color: #991b1b; }
+.verdict-UNKNOWN   { background: #f1f5f9; color: #475569; }
+
+/* ── Sections ── */
+.section-header {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: #64748b;
+  border-bottom: 1.5px solid #e2e8f0;
+  padding-bottom: 5px;
+  margin: 20px 0 10px;
+}
+
+/* ── Two-col layout ── */
+.two-col { display: flex; gap: 16px; }
+.col { flex: 1; }
+
+/* ── Snapshot table ── */
+.snapshot-table { width: 100%; border-collapse: collapse; }
+.snapshot-table td {
+  padding: 6px 8px;
+  font-size: 10px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.snapshot-table td:first-child {
+  font-size: 8.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #64748b;
+  width: 38%;
+}
+
+/* ── Metric cards ── */
+.metrics-row { display: flex; gap: 10px; margin: 10px 0; flex-wrap: wrap; }
+.metric-card {
+  flex: 1;
+  min-width: 90px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 5px;
+  padding: 10px 12px;
+  page-break-inside: avoid;
+}
+.metric-card-label {
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #64748b;
+  margin-bottom: 4px;
+}
+.metric-card-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1e3a5f;
+}
+.metric-card-source {
+  font-size: 8px;
+  color: #94a3b8;
+  margin-top: 3px;
+}
+
+/* ── Benchmark table ── */
+.bench-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+.bench-table th {
+  background: #f1f5f9;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #475569;
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid #cbd5e0;
+}
+.bench-table td {
+  padding: 6px 8px;
+  font-size: 10px;
+  border-bottom: 1px solid #f1f5f9;
+}
+.discount { font-weight: 700; color: #16a34a; }
+
+/* ── Synthesis sections ── */
+.synthesis-section { margin-bottom: 14px; page-break-inside: avoid; }
+.synthesis-heading {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #475569;
+  margin-bottom: 5px;
+}
+.synthesis-body {
+  font-size: 10.5px;
+  line-height: 1.65;
+  color: #334155;
+}
+
+/* ── Flag ── */
+.flag { color: #dc2626; font-weight: 600; }
+.ok { color: #16a34a; font-weight: 600; }
+
+/* ── Quality bar ── */
+.quality-bar {
+  background: #f1f5f9;
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 9px;
+  color: #64748b;
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.quality-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.HIGH { background: #22c55e; }
+.MEDIUM { background: #f59e0b; }
+.LOW { background: #ef4444; }
+
+/* ── Methodology ── */
+.methodology {
+  margin-top: 20px;
+  padding: 10px 12px;
+  background: #f8fafc;
+  border-left: 3px solid #cbd5e0;
+  font-size: 8px;
+  color: #64748b;
+  line-height: 1.6;
+  page-break-inside: avoid;
+}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-label">Noor Acquisitions · OM Analysis</div>
+  <div class="header-address">{{ address }}{% if city %}, {{ city }}{% endif %}{% if state %} {{ state }}{% endif %}</div>
+  <div class="header-sub">
+    {% if units %}{{ units }} units · {% endif %}
+    {% if year_built %}Built {{ year_built }} · {% endif %}
+    {{ asset_class | title }} · Generated {{ generated }}
+  </div>
+  <div class="verdict-badge verdict-{{ verdict }}">{{ verdict }}</div>
+</div>
+
+<!-- Snapshot + Financials -->
+<div class="section-header">Property Snapshot</div>
+<div class="two-col">
+  <div class="col">
+    <table class="snapshot-table">
+      <tr><td>Address</td><td>{{ address }}{% if city %}, {{ city }}, {{ state }} {{ zip }}{% endif %}</td></tr>
+      <tr><td>Units</td><td>{{ units | maybe }}</td></tr>
+      <tr><td>Year Built</td><td>{{ year_built | maybe }}</td></tr>
+      <tr><td>Asset Class</td><td>{{ asset_class | title }}</td></tr>
+      <tr><td>Asking Price</td><td>{% if asking_price %}{{ asking_price | currency }}{% else %}<em>Not disclosed</em>{% endif %}</td></tr>
+      <tr><td>Appraised Value</td><td>{% if appraised_value %}{{ appraised_value | currency }} <small style="color:#94a3b8">(ATTOM)</small>{% else %}—{% endif %}</td></tr>
+    </table>
+  </div>
+  <div class="col">
+    <table class="snapshot-table">
+      <tr><td>Owner</td><td>{{ owner_name | maybe }}</td></tr>
+      <tr><td>Owner Location</td><td>{% if out_of_state %}<span class="flag">Out of state ({{ owner_state }})</span>{% else %}{{ owner_state | maybe }}{% endif %}</td></tr>
+      <tr><td>Loan Type</td><td>{{ loan_type | maybe }}</td></tr>
+      <tr><td>Loan Balance</td><td>{% if loan_balance %}{{ loan_balance | currency }}{% else %}—{% endif %}</td></tr>
+      <tr><td>Interest Rate</td><td>{% if loan_rate %}{{ (loan_rate * 100) | pct }}{% else %}—{% endif %}</td></tr>
+      <tr><td>Loan Term</td><td>{% if loan_term_months %}{{ loan_term_months // 12 }} yr{% else %}—{% endif %}</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- Underwrite Metrics -->
+{% if noi_estimate or value_add %}
+<div class="section-header">Financial Underwrite</div>
+<div class="metrics-row">
+  {% if noi_estimate %}
+  <div class="metric-card">
+    <div class="metric-card-label">NOI Estimate</div>
+    <div class="metric-card-value">{{ noi_estimate | currency }}</div>
+    <div class="metric-card-source">{{ noi_source }}</div>
+  </div>
+  {% endif %}
+  {% if cap_rate_at_ask %}
+  <div class="metric-card">
+    <div class="metric-card-label">Cap Rate at Ask</div>
+    <div class="metric-card-value">{{ (cap_rate_at_ask * 100) | pct }}</div>
+    <div class="metric-card-source">calculated from OM</div>
+  </div>
+  {% endif %}
+  {% if price_per_unit %}
+  <div class="metric-card">
+    <div class="metric-card-label">Price / Unit</div>
+    <div class="metric-card-value">{{ price_per_unit | currency }}</div>
+    <div class="metric-card-source">calculated from OM</div>
+  </div>
+  {% endif %}
+  {% if value_add %}
+  <div class="metric-card">
+    <div class="metric-card-label">Value-Add Payback</div>
+    <div class="metric-card-value">{{ value_add.payback_years }} yr</div>
+    <div class="metric-card-source">from OM</div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Market Rent Benchmarks -->
+{% if benchmarks %}
+<table class="bench-table">
+  <thead>
+    <tr>
+      <th>Type</th>
+      <th>In-Place Rent</th>
+      <th>Census Median</th>
+      <th>Discount to Market</th>
+      <th>HUD FMR</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for br, info in benchmarks.items() %}
+    <tr>
+      <td style="font-weight:600">{{ br | upper }}</td>
+      <td>{% if info.in_place_rent %}${{ info.in_place_rent }}{% else %}—{% endif %}</td>
+      <td>{% if info.census_median_rent %}${{ info.census_median_rent }}{% else %}—{% endif %}</td>
+      <td>{% if info.discount_to_census_pct %}<span class="discount">{{ info.discount_to_census_pct }}% below</span>{% else %}—{% endif %}</td>
+      <td>{% if info.hud_fmr %}${{ info.hud_fmr }}{% else %}<span style="color:#94a3b8">Not available</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endif %}
+
+<!-- Public Record Flags -->
+<div class="section-header">Public Record Flags</div>
+<table class="snapshot-table">
+  <tr>
+    <td>Tax Status</td>
+    <td>{% if tax_delinquent %}<span class="flag">Delinquent{% if tax_year %} ({{ tax_year }}){% endif %}</span>{% else %}<span class="ok">Current</span>{% endif %}</td>
+  </tr>
+  <tr>
+    <td>Open Violations</td>
+    <td>{% if open_violations > 0 %}<span class="flag">{{ open_violations }} open</span>{% else %}<span class="ok">None</span>{% endif %}</td>
+  </tr>
+  {% if market %}
+  <tr>
+    <td>Submarket Vacancy</td>
+    <td>{{ market.vacancy_pct | maybe }}%</td>
+  </tr>
+  <tr>
+    <td>Submarket Median Rent</td>
+    <td>{% if market.median_rent %}${{ market.median_rent }}{% else %}—{% endif %}</td>
+  </tr>
+  {% endif %}
+</table>
+
+<!-- Synthesis Sections -->
+{% if sections %}
+<div class="section-header" style="margin-top:24px">Analysis</div>
+{% for sec in sections %}
+<div class="synthesis-section">
+  <div class="synthesis-heading">{{ sec.heading }}</div>
+  <div class="synthesis-body">{{ sec.body }}</div>
+</div>
+{% endfor %}
+{% endif %}
+
+<!-- Data Quality -->
+{% if data_quality %}
+<div class="quality-bar">
+  <div class="quality-dot {{ data_quality.confidence }}"></div>
+  <span>
+    <strong>{{ data_quality.confidence }} confidence</strong> —
+    {{ data_quality.sources_clean }}/{{ data_quality.sources_total }} data sources returned results.
+    {% if data_quality.missing %}Missing: {{ data_quality.missing | join(', ') }}.{% endif %}
+  </span>
+</div>
+{% endif %}
+
+<!-- Methodology -->
+<div class="methodology">
+  <strong>Data Sources &amp; Limitations</strong> — Owner and tax data: Bexar County Appraisal District (BCAD).
+  Deed and transaction data: ATTOM Data Solutions. Market rents: U.S. Census ACS 5-Year Estimates, ZIP-level.
+  NOI and financial metrics calculated from figures extracted from the offering memorandum; verify independently.
+  Texas is a non-disclosure state — recent comparable sale prices are not available from public records.
+  This report is for informational purposes only and does not constitute investment advice.
+</div>
+
+</body>
+</html>

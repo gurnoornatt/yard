@@ -15,7 +15,7 @@ load_dotenv(Path(__file__).parent / ".env")
 
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from openai import OpenAI
 
@@ -352,6 +352,47 @@ async def analyze(file: UploadFile = File(...)):
         run_analysis(contents, filename),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.post("/export")
+async def export_analysis(body: dict):
+    """Generate a PDF report from a completed analysis and optionally email it."""
+    synthesis_text = body.get("synthesis_text", "")
+    verdict = body.get("verdict", "UNKNOWN")
+    all_data = body.get("all_data", {})
+    data_quality = body.get("data_quality")
+    recipient_email = body.get("recipient_email", "")
+    property_address = (all_data.get("parse_om") or {}).get("address", "property")
+
+    try:
+        from reports.generate import build_om_context, render_pdf
+        context = build_om_context(synthesis_text, verdict, all_data, data_quality)
+        pdf_bytes = render_pdf("om_analysis.html", context)
+    except ImportError:
+        return Response(
+            content=json.dumps({"error": "WeasyPrint not installed. Run: brew install cairo pango gdk-pixbuf && uv add weasyprint jinja2"}),
+            status_code=503,
+            media_type="application/json",
+        )
+    except Exception as e:
+        log.error("PDF generation error: %s", e)
+        return Response(content=json.dumps({"error": str(e)}), status_code=500, media_type="application/json")
+
+    if recipient_email:
+        try:
+            from reports.deliver import send_om_report
+            send_om_report(recipient_email, pdf_bytes, property_address)
+            log.info("OM report emailed to %s", recipient_email)
+        except Exception as e:
+            log.error("Email delivery error: %s", e)
+
+    safe = re.sub(r"[^\w]", "_", property_address)[:40]
+    filename = f"Noor_Analysis_{safe}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

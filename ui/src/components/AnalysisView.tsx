@@ -73,6 +73,9 @@ export function AnalysisView({ state, file, onReset: _onReset, isAnalyzing }: {
               verdict={state.verdict}
               synthesisText={state.synthesisText}
               isStreaming={isAnalyzing && state.synthesisText.length > 0}
+              allData={Object.fromEntries(
+                Object.entries(state.skills).map(([k, v]) => [k, v?.data ?? null])
+              )}
             />
           </motion.div>
         )}

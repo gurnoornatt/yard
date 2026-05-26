@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+@page {
+  size: A4;
+  margin: 18mm 18mm 20mm 18mm;
+  @bottom-left {
+    content: "Confidential — Noor Acquisitions";
+    font-family: -apple-system, 'Segoe UI', sans-serif;
+    font-size: 8px;
+    color: #94a3b8;
+  }
+  @bottom-right {
+    content: "Page " counter(page) " of " counter(pages);
+    font-family: -apple-system, 'Segoe UI', sans-serif;
+    font-size: 8px;
+    color: #94a3b8;
+  }
+}
+@page :first { @bottom-left { content: none; } @bottom-right { content: none; } }
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, 'Segoe UI', 'Helvetica Neue', sans-serif;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: #1a1a1a;
+}
+
+/* ── Cover / Header ── */
+.cover {
+  background: #1e3a5f;
+  color: white;
+  padding: 36px 32px 28px;
+  margin-bottom: 0;
+}
+.cover-label {
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #93c5fd;
+  margin-bottom: 10px;
+}
+.cover-title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  margin-bottom: 4px;
+}
+.cover-sub {
+  font-size: 13px;
+  color: #bfdbfe;
+}
+.cover-meta {
+  margin-top: 20px;
+  display: flex;
+  gap: 32px;
+}
+.cover-stat { }
+.cover-stat-value { font-size: 20px; font-weight: 700; }
+.cover-stat-label { font-size: 9px; color: #93c5fd; letter-spacing: 0.1em; text-transform: uppercase; margin-top: 2px; }
+
+/* ── Section headers ── */
+.section-header {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: #64748b;
+  border-bottom: 1.5px solid #e2e8f0;
+  padding-bottom: 5px;
+  margin: 22px 0 12px;
+}
+
+/* ── Ranked table ── */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 4px;
+}
+thead th {
+  background: #f1f5f9;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #475569;
+  padding: 7px 8px;
+  text-align: left;
+  border-bottom: 1px solid #cbd5e0;
+}
+tbody td {
+  padding: 7px 8px;
+  font-size: 10px;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: top;
+}
+tbody tr:nth-child(even) td { background: #f8fafc; }
+
+.signal-pill {
+  display: inline-block;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 8px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin: 1px 2px 1px 0;
+  white-space: nowrap;
+}
+.signal-pill.tax { background: #fee2e2; color: #991b1b; }
+.rank-num {
+  font-size: 11px;
+  font-weight: 700;
+  color: #1e3a5f;
+}
+
+/* ── Deep dive cards ── */
+.card {
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 16px;
+  margin-bottom: 12px;
+  page-break-inside: avoid;
+}
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+.card-address {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+.card-sub {
+  font-size: 10px;
+  color: #64748b;
+  margin-top: 2px;
+}
+.card-signals {
+  margin-top: 8px;
+}
+.metric-row {
+  display: flex;
+  gap: 16px;
+  margin-top: 10px;
+}
+.metric-item { }
+.metric-label { font-size: 8px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; }
+.metric-value { font-size: 13px; font-weight: 700; color: #1e3a5f; margin-top: 2px; }
+.flag { color: #dc2626; font-weight: 600; }
+.ok { color: #16a34a; }
+
+/* ── Footer note ── */
+.methodology {
+  margin-top: 24px;
+  padding: 12px 14px;
+  background: #f8fafc;
+  border-left: 3px solid #cbd5e0;
+  font-size: 8.5px;
+  color: #64748b;
+  line-height: 1.6;
+  page-break-inside: avoid;
+}
+</style>
+</head>
+<body>
+
+<!-- Cover -->
+<div class="cover">
+  <div class="cover-label">Noor Acquisitions · Research</div>
+  <div class="cover-title">Motivated Seller Intelligence</div>
+  <div class="cover-sub">San Antonio–Bexar County Multifamily · {{ month_label }}</div>
+  <div class="cover-meta">
+    <div class="cover-stat">
+      <div class="cover-stat-value">{{ properties|length }}</div>
+      <div class="cover-stat-label">Properties Surfaced</div>
+    </div>
+    <div class="cover-stat">
+      <div class="cover-stat-value">{{ top5|length }}</div>
+      <div class="cover-stat-label">Deep Dives</div>
+    </div>
+    <div class="cover-stat">
+      <div class="cover-stat-value">{{ generated }}</div>
+      <div class="cover-stat-label">Generated</div>
+    </div>
+  </div>
+</div>
+
+<!-- Ranked List -->
+<div class="section-header">Ranked Property List — Top {{ properties|length }}</div>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width:28px">#</th>
+      <th>Address</th>
+      <th style="width:48px">Units</th>
+      <th style="width:60px">Year Built</th>
+      <th style="width:90px">Appraised Value</th>
+      <th>Signals</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in properties %}
+    <tr>
+      <td><span class="rank-num">{{ loop.index }}</span></td>
+      <td style="font-weight:600">{{ p.address }}</td>
+      <td>{{ p.units | maybe }}</td>
+      <td>{{ p.year_built | maybe }}</td>
+      <td>{{ p.appraised_value | currency }}</td>
+      <td>
+        {% for s in p.signals %}
+          <span class="signal-pill {% if 'tax' in s.lower() or 'delinq' in s.lower() %}tax{% endif %}">{{ s }}</span>
+        {% else %}
+          <span style="color:#94a3b8">—</span>
+        {% endfor %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<!-- Deep Dives — top 5 -->
+{% if top5 %}
+<div class="section-header" style="margin-top:28px">Priority Assets — Deep Dive</div>
+
+{% for p in top5 %}
+<div class="card">
+  <div class="card-header">
+    <div>
+      <div class="card-address">{{ loop.index }}. {{ p.address }}</div>
+      <div class="card-sub">
+        {% if p.units %}{{ p.units }} units · {% endif %}
+        {% if p.year_built %}Built {{ p.year_built }} · {% endif %}
+        ZIP {{ p.zip_code }}
+      </div>
+    </div>
+    <div style="text-align:right">
+      <div style="font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:0.08em">Appraised</div>
+      <div style="font-size:15px;font-weight:700;color:#1e3a5f">{{ p.appraised_value | currency }}</div>
+    </div>
+  </div>
+
+  <div class="card-signals">
+    {% for s in p.signals %}
+      <span class="signal-pill {% if 'tax' in s.lower() or 'delinq' in s.lower() %}tax{% endif %}">{{ s }}</span>
+    {% endfor %}
+  </div>
+
+  <div class="metric-row">
+    {% if p.owner_name %}
+    <div class="metric-item">
+      <div class="metric-label">Owner</div>
+      <div class="metric-value" style="font-size:11px">{{ p.owner_name }}</div>
+    </div>
+    {% endif %}
+    {% if p.tax_status %}
+    <div class="metric-item">
+      <div class="metric-label">Tax Status</div>
+      <div class="metric-value {% if p.tax_delinquent %}flag{% else %}ok{% endif %}">
+        {{ "Delinquent" if p.tax_delinquent else "Current" }}
+      </div>
+    </div>
+    {% endif %}
+    {% if p.market and p.market.median_rent %}
+    <div class="metric-item">
+      <div class="metric-label">Submarket Median Rent</div>
+      <div class="metric-value">${{ p.market.median_rent }}</div>
+    </div>
+    {% endif %}
+    {% if p.market and p.market.vacancy_pct %}
+    <div class="metric-item">
+      <div class="metric-label">Vacancy Rate</div>
+      <div class="metric-value">{{ p.market.vacancy_pct }}%</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+
+<!-- Methodology -->
+<div class="methodology">
+  <strong>Methodology &amp; Limitations</strong><br>
+  Properties sourced from ATTOM Data Solutions (radius search, San Antonio MSA). Loan maturity figures are estimates
+  derived from deed origination dates in public records; actual terms may differ. Texas is a non-disclosure state —
+  recent transaction prices are not available from public sources. Owner and tax data sourced from Bexar County
+  Appraisal District (BCAD). Market rent benchmarks from U.S. Census ACS 5-Year Estimates. This report is for
+  informational purposes only and does not constitute investment advice.
+</div>
+
+</body>
+</html>

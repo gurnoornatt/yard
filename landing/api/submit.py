@@ -14,13 +14,19 @@ SLACK_WEBHOOK_URL = os.environ.get("SLACK_WEBHOOK_URL", "")
 PDF_PATH = Path(__file__).parent.parent / "assets" / "sample-memo.pdf"
 
 
-def _post(url: str, body: dict, headers: dict) -> None:
+def _post(url: str, body: dict, headers: dict) -> str:
     data = json.dumps(body).encode()
     req = urllib.request.Request(url, data=data, headers=headers, method="POST")
     try:
-        urllib.request.urlopen(req, timeout=10)
+        resp = urllib.request.urlopen(req, timeout=10)
+        return resp.read().decode()
+    except urllib.error.HTTPError as e:
+        msg = e.read().decode()
+        print(f"POST error {url} [{e.code}]: {msg}")
+        return msg
     except Exception as e:
         print(f"POST error {url}: {e}")
+        return ""
 
 
 def _insert_contact(email: str, firm: str, submarket: str) -> None:
@@ -65,11 +71,12 @@ def _send_email(email: str) -> None:
     else:
         print("sample-memo.pdf not found — sending without attachment")
 
-    _post(
+    result = _post(
         "https://api.resend.com/emails",
         body,
         {"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
     )
+    print(f"Resend response: {result}")
 
 
 def _slack_alert(email: str, firm: str, submarket: str) -> None:

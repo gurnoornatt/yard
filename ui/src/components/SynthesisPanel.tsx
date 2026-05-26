@@ -1,3 +1,4 @@
+import React from 'react'
 import { motion } from 'framer-motion'
 import type { Verdict } from '../types'
 
@@ -45,19 +46,79 @@ function renderSections(text: string) {
   })
 }
 
-export function SynthesisPanel({ verdict, synthesisText, isStreaming }: {
+function ExportButton({ synthesisText, verdict, allData }: {
+  synthesisText: string
+  verdict: Verdict | null
+  allData: Record<string, unknown>
+}) {
+  const [state, setState] = React.useState<'idle' | 'loading' | 'done' | 'error'>('idle')
+
+  async function handleExport() {
+    setState('loading')
+    try {
+      const resp = await fetch('/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          synthesis_text: synthesisText,
+          verdict: verdict ?? 'UNKNOWN',
+          all_data: allData,
+        }),
+      })
+      if (!resp.ok) throw new Error(`Export failed: ${resp.status}`)
+      const blob = await resp.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = resp.headers.get('Content-Disposition')?.split('filename="')[1]?.replace('"', '') ?? 'analysis.pdf'
+      a.click()
+      URL.revokeObjectURL(url)
+      setState('done')
+      setTimeout(() => setState('idle'), 3000)
+    } catch {
+      setState('error')
+      setTimeout(() => setState('idle'), 3000)
+    }
+  }
+
+  const label = state === 'loading' ? 'Generating…' : state === 'done' ? 'Downloaded' : state === 'error' ? 'Failed' : 'Export PDF'
+
+  return (
+    <button
+      onClick={handleExport}
+      disabled={state === 'loading' || !synthesisText}
+      style={{
+        fontSize: 11, fontWeight: 600, letterSpacing: '0.04em',
+        color: state === 'error' ? 'var(--red)' : state === 'done' ? 'var(--green)' : 'var(--text-3)',
+        background: 'none', border: '1px solid var(--border)', borderRadius: 6,
+        padding: '5px 12px', cursor: state === 'loading' ? 'default' : 'pointer',
+        opacity: !synthesisText ? 0.4 : 1, transition: 'color 0.2s',
+      }}
+    >
+      {label}
+    </button>
+  )
+}
+
+export function SynthesisPanel({ verdict, synthesisText, isStreaming, allData }: {
   verdict: Verdict | null
   synthesisText: string
   isStreaming: boolean
+  allData?: Record<string, unknown>
 }) {
   const c = verdict ? VERDICT_CONFIG[verdict] : null
   const { reasoning, rest } = extractReasoning(synthesisText)
 
   return (
     <div style={{ padding: '24px 24px' }}>
-      <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-3)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 16 }}>
-        Analysis
-      </p>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-3)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+          Analysis
+        </p>
+        {!isStreaming && synthesisText && (
+          <ExportButton synthesisText={synthesisText} verdict={verdict} allData={allData ?? {}} />
+        )}
+      </div>
 
       {/* Verdict badge */}
       {c && (
