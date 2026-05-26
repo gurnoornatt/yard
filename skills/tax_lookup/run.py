@@ -16,24 +16,43 @@ MODEL = "openai/gpt-4o-mini"
 
 
 def _parse_tax_blob(blob: str) -> dict:
+    import datetime
     text = str(blob).lower()
-    delinquent = bool(re.search(r"delinquent|past due|overdue|unpaid", text))
+    current_year = datetime.date.today().year
+    # Only flag delinquent on explicit past-due language; "unpaid" alone can mean
+    # current-year taxes not yet billed, which is normal and not a red flag.
+    delinquent = bool(re.search(r"delinquent|past due|overdue", text))
     amount = re.search(r"\$[\d,]+(?:\.\d{2})?", blob)
-    year = re.search(r"\b(20\d{2})\b", blob)
+    year_match = re.search(r"\b(20\d{2})\b", blob)
+    tax_year = year_match.group(1) if year_match else None
+    # Suppress delinquency flag if the only year mentioned is current or future
+    if delinquent and tax_year and int(tax_year) >= current_year:
+        delinquent = False
     return {
         "delinquent": delinquent,
         "total_due": amount.group(0) if amount else None,
-        "tax_year": year.group(1) if year else None,
+        "tax_year": tax_year,
         "status": "delinquent" if delinquent else "current",
     }
 
 
 def _parse_extraction(result: dict | str | None) -> dict:
+    import datetime
     if not result:
         return {}
     if isinstance(result, dict):
         if "delinquent" in result:
-            return result
+            # Apply year-check: suppress delinquency if tax_year >= current year
+            parsed = dict(result)
+            tax_year = parsed.get("tax_year")
+            if parsed.get("delinquent") and tax_year:
+                try:
+                    if int(tax_year) >= datetime.date.today().year:
+                        parsed["delinquent"] = False
+                        parsed["status"] = "current"
+                except (ValueError, TypeError):
+                    pass
+            return parsed
         blob = result.get("extraction", "")
     else:
         blob = str(result)
@@ -77,8 +96,10 @@ async def _scrape_tax(bcad_prop_id: str = "", address: str = "") -> dict:
 
             resp = await session.extract(
                 instruction=(
-                    "From the taxes section extract: whether taxes are delinquent (true/false), "
-                    "total amount due, most recent tax year, and status (current or delinquent)."
+                    "From the taxes section extract: whether any PRIOR YEAR taxes are delinquent "
+                    "or past due (true/false — current-year taxes not yet billed or not yet due "
+                    "should be false), total delinquent amount owed if any, most recent tax year "
+                    "shown, and status (current or delinquent)."
                 ),
                 schema={
                     "type": "object",

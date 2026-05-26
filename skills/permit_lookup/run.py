@@ -38,11 +38,11 @@ def run(params: dict) -> dict:
 
     permits = [
         {
-            "description": rec.get("WORK_DESC", ""),
-            "value": rec.get("JOB_VALUE"),
-            "date": rec.get("ISSUED_DATE"),
-            "status": rec.get("STATUS"),
-            "type": rec.get("PERMIT_TYPE"),
+            "type": rec.get("PERMIT TYPE", ""),
+            "description": rec.get("WORK TYPE") or rec.get("PROJECT NAME", ""),
+            "value": rec.get("DECLARED VALUATION"),
+            "date_submitted": rec.get("DATE SUBMITTED"),
+            "date_issued": rec.get("DATE ISSUED"),
         }
         for rec in records
     ]

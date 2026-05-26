@@ -47,6 +47,7 @@ SKILL_SEQUENCE = [
     "tax_lookup",
     "violations_lookup",
     "comps_lookup",
+    "underwrite",
     "maturity_estimator",
     "synthesize_analysis",
 ]
@@ -60,6 +61,7 @@ SKILL_LABELS = {
     "tax_lookup": "Checking tax status",
     "violations_lookup": "Scanning code violations",
     "comps_lookup": "Pulling submarket comps",
+    "underwrite": "Running financial underwrite",
     "maturity_estimator": "Estimating loan pressure",
     "synthesize_analysis": "Synthesizing findings",
 }
@@ -122,21 +124,36 @@ def _slug(address: str, zip_: str) -> str:
     return f"{clean}_{zip_}" if zip_ else clean
 
 
-SYNTHESIS_PROMPT = """You are Sentinel, an autonomous real estate acquisition analyst. Output ONLY the 6 sections below — no preamble, no thinking, no meta-commentary. Begin immediately with "## Property Snapshot".
+QUALITY_SKILLS = [
+    "parse_om",
+    "owner_lookup",
+    "deed_lookup",
+    "permit_lookup",
+    "tax_lookup",
+    "violations_lookup",
+    "comps_lookup",
+    "underwrite",
+    "maturity_estimator",
+]
 
-Using ONLY the research data below, write a concise 6-section analysis.
+SYNTHESIS_PROMPT = """You are Sentinel, an autonomous real estate acquisition analyst. Output ONLY the 7 sections below — no preamble, no thinking, no meta-commentary. Begin immediately with "## Property Snapshot".
+
+Using ONLY the research data below, write a concise 7-section analysis.
 Each section: 2-4 sentences. Direct, factual, cite specific numbers. No marketing language.
 If a data source shows "data_unavailable" or null, note it briefly and move on.
 
+IMPORTANT — Source tagging: every number you cite must be followed by its source in parentheses. Use exactly: (from OM), (calculated from OM), (from HUD SAFMR), (from Census ACS), (from ATTOM), (from BCAD). If a number has no source, do not cite it.
+
 {asset_class_note}
+{coverage_note}
 
 Research data:
 {research_json}
 
-Write exactly these 6 sections (start NOW with ## Property Snapshot):
+Write exactly these 7 sections (start NOW with ## Property Snapshot):
 
 ## Property Snapshot
-[address, property type, units if applicable, year built, asking price, appraised value]
+[address, property type, units, year built, asking price, appraised value — each with source tag]
 
 ## Owner Motivation Profile
 [owner name, hold period if known, owner state (flag if out-of-state), portfolio size, motivation signals]
@@ -144,8 +161,11 @@ Write exactly these 6 sections (start NOW with ## Property Snapshot):
 ## Loan Situation
 [lender, loan amount, origination date, maturity date, loan type, refinance pressure assessment]
 
+## Financial Underwrite
+[NOI estimate with source, cap rate at ask if available, price per unit if available, value-add payback math if available. Then: for each bedroom type, show in-place rent vs HUD SAFMR vs Census median and the discount-to-market percentage. If underwrite data is null, state that financial section was not found in the OM.]
+
 ## Submarket Reality Check
-[nearby comparable sales with prices, market rent level, vacancy rate, trend]
+[nearby comparable multifamily sales with prices, market rent level, vacancy rate, trend]
 
 ## Hidden Flags
 [tax delinquency with dollar amount, open code violations with types — or: No hidden flags detected in public records.]
@@ -186,6 +206,15 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
                 if result.get("status") == "ok" and result.get("data"):
                     ctx = dict(result["data"])
                     property_id = _slug(ctx.get("address", ""), ctx.get("zip", ""))
+                    # Flatten financial fields into ctx for the underwrite skill
+                    financials = ctx.get("financials") or {}
+                    for _fkey in [
+                        "unit_mix", "occupancy_rate", "annual_in_place_revenue",
+                        "total_expense_per_unit_annual", "value_add_rent_premium_per_unit",
+                        "renovation_cost_per_unit",
+                    ]:
+                        if financials.get(_fkey) is not None:
+                            ctx[_fkey] = financials[_fkey]
 
             else:
                 result = await call_skill_async(skill_name, ctx)
@@ -235,9 +264,20 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
         "violations_lookup",
         "comps_lookup",
         "portfolio_crawler",
+        "underwrite",
         "maturity_estimator",
     ]
     research_summary = {k: all_data.get(k) for k in research_keys}
+
+    # Data quality score
+    clean = [k for k in QUALITY_SKILLS if all_data.get(k) is not None]
+    missing = [k for k in QUALITY_SKILLS if all_data.get(k) is None]
+    score = len(clean)
+    confidence = "HIGH" if score >= 6 else "MEDIUM" if score >= 4 else "LOW"
+    coverage_note = (
+        f"Data coverage: {score}/{len(QUALITY_SKILLS)} sources returned data."
+        + (f" Missing: {', '.join(missing)}." if missing else "")
+    )
 
     asset_class = ctx.get("asset_class", "")
     asset_class_note = (
@@ -251,6 +291,7 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
     prompt = SYNTHESIS_PROMPT.format(
         research_json=json.dumps(research_summary, indent=2),
         asset_class_note=asset_class_note,
+        coverage_note=coverage_note,
     )
 
     yield sse("synthesis_start", {"label": "Writing analysis..."})
@@ -268,7 +309,7 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
             model="nvidia/nemotron-3-super-120b-a12b",
             messages=[{"role": "user", "content": prompt}],
             stream=True,
-            max_tokens=3000,
+            max_tokens=8000,
         )
         for chunk in stream:
             if not chunk.choices:
@@ -288,8 +329,17 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
         yield sse("synthesis_chunk", {"text": f"\n\n[Synthesis error: {e}]"})
 
     total = round(time.time() - pipeline_start, 1)
-    log.info("=== ANALYSIS DONE: verdict=%s total=%.1fs ===", verdict, total)
-    yield sse("verdict", {"recommendation": verdict, "full_text": full_text})
+    log.info("=== ANALYSIS DONE: verdict=%s confidence=%s total=%.1fs ===", verdict, confidence, total)
+    yield sse("verdict", {
+        "recommendation": verdict,
+        "full_text": full_text,
+        "data_quality": {
+            "confidence": confidence,
+            "sources_clean": score,
+            "sources_total": len(QUALITY_SKILLS),
+            "missing": missing,
+        },
+    })
     yield sse("done", {})
 
 

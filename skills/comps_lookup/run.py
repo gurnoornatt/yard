@@ -9,7 +9,7 @@ CENSUS_KEY = os.environ.get("CENSUS_API_KEY", "")
 ATTOM_BASE = "https://api.gateway.attomdata.com/propertyapi/v1.0.0"
 CENSUS_BASE = "https://api.census.gov/data/2023/acs/acs5"
 
-CENSUS_VARS = "B25003_001E,B25003_003E,B25064_001E,B25002_001E,B25002_003E"
+CENSUS_VARS = "B25003_001E,B25003_003E,B25064_001E,B25002_001E,B25002_003E,B25031_003E,B25031_004E,B25031_005E"
 
 
 def _attom_headers() -> dict:
@@ -21,7 +21,8 @@ def _get_comps(address: str, city: str, state: str, zip_: str) -> list:
     try:
         r = httpx.get(
             f"{ATTOM_BASE}/sale/snapshot",
-            params={"address1": address, "address2": address2, "radius": "1.0"},
+            params={"address1": address, "address2": address2, "radius": "1.5",
+                    "PROPERTYTYPE": "apartment|multi+family"},
             headers=_attom_headers(),
             timeout=20,
         )
@@ -66,6 +67,13 @@ def _get_market(zip_: str) -> dict:
         header, values = rows[0], rows[1]
         d = dict(zip(header, values))
 
+        def _si(val) -> int | None:
+            try:
+                v = int(val)
+                return v if v > 0 else None
+            except Exception:
+                return None
+
         total_occupied = int(d.get("B25003_001E") or 0)
         renter_occ = int(d.get("B25003_003E") or 0)
         total_units = int(d.get("B25002_001E") or 1)
@@ -80,6 +88,9 @@ def _get_market(zip_: str) -> dict:
             "vacancy_pct": round(vacant / total_units * 100, 1)
             if total_units
             else None,
+            "median_rent_1br": _si(d.get("B25031_003E")),
+            "median_rent_2br": _si(d.get("B25031_004E")),
+            "median_rent_3br": _si(d.get("B25031_005E")),
             "zip": zip_,
         }
     except Exception:

@@ -38,11 +38,12 @@ def run(params: dict) -> dict:
 
     violations = [
         {
-            "description": rec.get("VIOLATION_DESC") or rec.get("Description", ""),
-            "status": rec.get("STATUS") or rec.get("Status", ""),
-            "date_opened": rec.get("OPEN_DATE") or rec.get("DateOpened"),
-            "date_closed": rec.get("CLOSE_DATE") or rec.get("DateClosed"),
-            "case_number": rec.get("CASE_NUMBER") or rec.get("CaseNumber"),
+            "description": rec.get("TYPENAME", ""),
+            "category": rec.get("Category", ""),
+            "status": rec.get("CaseStatus", ""),
+            "date_opened": rec.get("OPENEDDATETIME"),
+            "date_closed": rec.get("CLOSEDDATETIME"),
+            "case_number": rec.get("CASEID"),
         }
         for rec in records
     ]
@@ -50,7 +51,7 @@ def run(params: dict) -> dict:
     open_count = sum(
         1
         for v in violations
-        if (v.get("status") or "").lower() in ("open", "active", "")
+        if (v.get("status") or "").lower() in ("open", "active")
     )
 
     return {
