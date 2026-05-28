@@ -428,7 +428,12 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
         for chunk in stream:
             if chunk.choices:
                 text += chunk.choices[0].delta.content or ""
-        return text
+        # Nemotron 120B outputs a chain-of-thought preamble before the actual report.
+        # Strip everything before the first section header.
+        idx = text.find("## Property Snapshot")
+        if idx > 0:
+            text = text[idx:]
+        return text.strip()
 
     try:
         loop = asyncio.get_running_loop()
