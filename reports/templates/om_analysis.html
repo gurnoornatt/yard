@@ -233,12 +233,19 @@ body {
   </div>
   <div class="col">
     <table class="snapshot-table">
-      <tr><td>Owner</td><td>{{ owner_name | maybe }}</td></tr>
-      <tr><td>Owner Location</td><td>{% if out_of_state %}<span class="flag">Out of state ({{ owner_state }})</span>{% else %}{{ owner_state | maybe }}{% endif %}</td></tr>
-      <tr><td>Loan Type</td><td>{{ loan_type | maybe }}</td></tr>
-      <tr><td>Loan Balance</td><td>{% if loan_balance %}{{ loan_balance | currency }}{% else %}—{% endif %}</td></tr>
-      <tr><td>Interest Rate</td><td>{% if loan_rate %}{{ (loan_rate * 100) | pct }}{% else %}—{% endif %}</td></tr>
-      <tr><td>Loan Term</td><td>{% if loan_term_months %}{{ loan_term_months // 12 }} yr{% else %}—{% endif %}</td></tr>
+      <tr>
+        <td>Owner</td>
+        <td>
+          {{ owner_name | maybe }}
+          {% if absentee_owner %}<span class="flag" style="font-size:8px;margin-left:4px">ABSENTEE</span>{% endif %}
+          {% if corporate_owner %}<span style="font-size:8px;color:#64748b;margin-left:4px">LLC</span>{% endif %}
+        </td>
+      </tr>
+      <tr><td>Owner Location</td><td>{% if out_of_state %}<span class="flag">Out of state ({{ owner_state }})</span>{% elif owner_state %}{{ owner_state }}{% else %}—{% endif %}</td></tr>
+      <tr><td>Lender (ATTOM)</td><td>{{ attom_lender | maybe }}</td></tr>
+      <tr><td>Loan Amount</td><td>{% if attom_loan_amount %}{{ attom_loan_amount | currency }}{% else %}—{% endif %}</td></tr>
+      <tr><td>Originated</td><td>{{ attom_loan_date | maybe }}</td></tr>
+      {% if deed_lender %}<tr><td>Current Servicer</td><td>{{ deed_lender }}</td></tr>{% endif %}
     </table>
   </div>
 </div>
@@ -315,6 +322,16 @@ body {
     <td>Open Violations</td>
     <td>{% if open_violations > 0 %}<span class="flag">{{ open_violations }} open</span>{% else %}<span class="ok">None</span>{% endif %}</td>
   </tr>
+  <tr>
+    <td>Mechanics Liens</td>
+    <td>{% if mechanics_lien_count > 0 %}<span class="flag">{{ mechanics_lien_count }} filed</span>{% else %}<span class="ok">None</span>{% endif %}</td>
+  </tr>
+  {% if distress_signals %}
+  <tr>
+    <td>Distress Signals</td>
+    <td>{% for sig in distress_signals %}<div class="flag" style="font-size:9px;margin-bottom:2px">{{ sig }}</div>{% endfor %}</td>
+  </tr>
+  {% endif %}
   {% if market %}
   <tr>
     <td>Submarket Vacancy</td>

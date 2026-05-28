@@ -131,8 +131,14 @@ def run(params: dict) -> dict:
         result["cap_rate_source"] = f"unavailable — {reason}"
 
     # Price per unit and gross rent multiplier
-    result["price_per_unit"] = round(asking_price / units) if (asking_price and units) else None
-    result["grm"] = round(asking_price / annual_revenue, 2) if (asking_price and annual_revenue) else None
+    result["price_per_unit"] = (
+        round(asking_price / units) if (asking_price and units) else None
+    )
+    result["grm"] = (
+        round(asking_price / annual_revenue, 2)
+        if (asking_price and annual_revenue)
+        else None
+    )
 
     # Value-add return math
     if value_add_premium and reno_cost_pu and units:
@@ -171,7 +177,9 @@ def run(params: dict) -> dict:
         if fmr and in_place:
             entry["discount_to_fmr_pct"] = round((fmr - in_place) / fmr * 100, 1)
         if census_med and in_place:
-            entry["discount_to_census_pct"] = round((census_med - in_place) / census_med * 100, 1)
+            entry["discount_to_census_pct"] = round(
+                (census_med - in_place) / census_med * 100, 1
+            )
         benchmarks[key] = entry
 
     result["market_rent_benchmark"] = benchmarks or None

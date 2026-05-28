@@ -7,6 +7,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/analyze': 'http://localhost:8000',
+      '/export':  'http://localhost:8000',
       '/health':  'http://localhost:8000',
     },
   },

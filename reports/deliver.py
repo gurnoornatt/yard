@@ -1,4 +1,5 @@
 """Email delivery via Resend. Attaches a PDF report."""
+
 from __future__ import annotations
 
 import base64
@@ -52,29 +53,47 @@ _OM_BODY = """\
 """
 
 
+def _send(payload: dict) -> str:
+    """Send via Resend and surface errors clearly."""
+    try:
+        resp = resend.Emails.send(payload)
+    except Exception as e:
+        raise RuntimeError(f"Resend API error: {e}") from e
+    if isinstance(resp, dict):
+        if "id" in resp:
+            return resp["id"]
+        # Resend returns {"name": "...", "message": "..."} on error
+        err = resp.get("message") or resp.get("name") or repr(resp)
+        raise RuntimeError(f"Resend rejected email: {err}")
+    # New SDK returns object with .id
+    return getattr(resp, "id", "")
+
+
 def send_monthly_report(recipient: str, pdf_bytes: bytes, month_label: str) -> str:
     filename = f"Noor_Motivated_Sellers_{month_label.replace(' ', '_')}.pdf"
-    resp = resend.Emails.send({
-        "from": FROM_ADDRESS,
-        "to": [recipient],
-        "subject": f"Motivated Seller Intelligence — {month_label}",
-        "html": _MONTHLY_BODY,
-        "attachments": [_attachment(filename, pdf_bytes)],
-    })
-    return resp.get("id", "")
+    return _send(
+        {
+            "from": FROM_ADDRESS,
+            "to": [recipient],
+            "subject": f"Motivated Seller Intelligence — {month_label}",
+            "html": _MONTHLY_BODY,
+            "attachments": [_attachment(filename, pdf_bytes)],
+        }
+    )
 
 
 def send_om_report(recipient: str, pdf_bytes: bytes, property_address: str) -> str:
     safe = property_address.replace(",", "").replace(" ", "_")[:40]
     filename = f"Noor_Analysis_{safe}.pdf"
-    resp = resend.Emails.send({
-        "from": FROM_ADDRESS,
-        "to": [recipient],
-        "subject": f"OM Analysis — {property_address}",
-        "html": _OM_BODY,
-        "attachments": [_attachment(filename, pdf_bytes)],
-    })
-    return resp.get("id", "")
+    return _send(
+        {
+            "from": FROM_ADDRESS,
+            "to": [recipient],
+            "subject": f"OM Analysis — {property_address}",
+            "html": _OM_BODY,
+            "attachments": [_attachment(filename, pdf_bytes)],
+        }
+    )
 
 
 def _attachment(filename: str, pdf_bytes: bytes) -> dict:

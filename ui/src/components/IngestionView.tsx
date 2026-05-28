@@ -1,8 +1,9 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Upload } from 'lucide-react'
 import type { AnalysisState } from '../types'
 import { SKILL_ORDER } from '../App'
+import { ResultsPanel } from './ResultsPanel'
 
 // ── Virtual canvas dimensions ─────────────────────────────────────────────────
 // Root and verdict are centered vertically; doc/reasoning nodes fill rows 0-9.
@@ -165,15 +166,6 @@ function thought(state: AnalysisState): string {
 
 // ── Extract reasoning from synthesis text ─────────────────────────────────────
 
-function extractReasoning(text: string): string {
-  const idx = text.indexOf('## Bottom-Line Recommendation')
-  if (idx === -1) return ''
-  const after = text.slice(idx + '## Bottom-Line Recommendation'.length).trimStart()
-  const next  = after.indexOf('\n## ')
-  const block = next !== -1 ? after.slice(0, next) : after
-  return block.replace(/^(PURSUE|WATCHLIST|PASS)\s*/i, '').trim()
-}
-
 // ── Verdict color config ──────────────────────────────────────────────────────
 
 const VC: Record<VerdictVal, { bg: string; border: string; text: string; glow: string }> = {
@@ -264,6 +256,26 @@ export function IngestionView({ state, file, onFile, onBack }: {
 
   const isRunning = state.phase === 'uploading' || state.phase === 'analyzing'
   const isDone    = state.phase === 'done'
+
+  const handleExport = useCallback(() => {
+    const allData: Record<string, unknown> = {}
+    Object.entries(state.skills).forEach(([name, sk]) => { allData[name] = sk.data ?? null })
+    fetch('/export', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ synthesis_text: state.synthesisText, verdict: state.verdict ?? 'UNKNOWN', all_data: allData }),
+    })
+      .then(r => r.blob())
+      .then(blob => {
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `Nido_Analysis_${state.propertyId ?? 'report'}.pdf`
+        a.click()
+        URL.revokeObjectURL(url)
+      })
+      .catch(console.error)
+  }, [state])
   const nodes     = file ? buildNodes(state, file.name) : []
   const posMap    = new Map(nodes.map(n => [n.id, pos(n)]))
   const active    = file ? activeId(state, nodes) : ''
@@ -307,6 +319,15 @@ export function IngestionView({ state, file, onFile, onBack }: {
     inp.click()
   }
 
+  // Full-screen results view once analysis is complete
+  if (isDone && state.verdict) {
+    return (
+      <motion.div key="results" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.45 }}>
+        <ResultsPanel state={state} onBack={onBack} onExport={handleExport} />
+      </motion.div>
+    )
+  }
+
   return (
     <div className="mesh-bg" style={{ minHeight: '100vh', background: '#080808', display: 'flex', flexDirection: 'column' }}>
 
@@ -314,24 +335,21 @@ export function IngestionView({ state, file, onFile, onBack }: {
       <header style={{
         flexShrink: 0, position: 'sticky', top: 0, zIndex: 50,
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '0 24px', height: 64,
-        background: 'rgba(8,8,8,0.75)', backdropFilter: 'blur(20px)',
+        padding: '0 32px', height: 62,
+        background: 'rgba(8,8,8,0.8)', backdropFilter: 'blur(20px)',
         borderBottom: '1px solid rgba(255,255,255,0.05)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 20, fontWeight: 700, letterSpacing: '-0.02em', color: '#fff' }}>Sentinel</span>
-          <span style={{ fontSize: 12, color: 'rgba(196,199,200,0.4)' }}>OM Analyzer</span>
-          {isRunning && (
-            <motion.span animate={{ opacity: [0.4, 1, 0.4] }} transition={{ duration: 1.4, repeat: Infinity }}
-              style={{ marginLeft: 8, fontSize: 10, fontFamily: 'JetBrains Mono,monospace', color: 'rgba(99,102,241,0.85)', letterSpacing: '0.12em' }}>
-              LIVE
-            </motion.span>
-          )}
+          <span style={{ fontSize: 18, fontWeight: 700, letterSpacing: '-0.02em', color: '#fff' }}>Nido & Key</span>
+          <span style={{ width: 1, height: 14, background: 'rgba(255,255,255,0.1)' }} />
+          <span style={{ fontSize: 12, color: 'rgba(196,199,200,0.35)', letterSpacing: '0.02em' }}>OM Analysis</span>
         </div>
-        <div style={{ display: 'flex', gap: 4, background: 'rgba(255,255,255,0.05)', padding: 4, borderRadius: 9999 }}>
-          <button onClick={onBack} style={{ padding: '6px 16px', borderRadius: 9999, fontSize: 12, fontWeight: 500, background: 'transparent', color: '#c4c7c8', border: 'none', cursor: 'pointer' }}>History</button>
-          <button style={{ padding: '6px 16px', borderRadius: 9999, fontSize: 12, fontWeight: 500, background: 'rgba(255,255,255,0.1)', color: '#fff', border: 'none', cursor: 'pointer' }}>Analyze</button>
-        </div>
+        {isRunning && (
+          <motion.span animate={{ opacity: [0.4, 1, 0.4] }} transition={{ duration: 1.4, repeat: Infinity }}
+            style={{ fontSize: 10, fontFamily: 'JetBrains Mono,monospace', color: 'rgba(99,102,241,0.7)', letterSpacing: '0.12em' }}>
+            ANALYZING
+          </motion.span>
+        )}
       </header>
 
       {/* ── Graph / upload area ── */}
@@ -412,46 +430,6 @@ export function IngestionView({ state, file, onFile, onBack }: {
         </div>
       </div>
 
-      {/* ── Verdict reasoning panel — slides up when done ── */}
-      <AnimatePresence>
-        {isDone && state.verdict && (
-          <motion.div
-            key="reasoning"
-            initial={{ y: 60, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 60, opacity: 0 }}
-            transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
-            style={{
-              flexShrink: 0,
-              borderTop: '1px solid rgba(255,255,255,0.08)',
-              background: 'rgba(10,10,10,0.97)',
-              backdropFilter: 'blur(24px)',
-              padding: '18px 32px',
-              maxHeight: 180,
-              overflowY: 'auto',
-            }}
-          >
-            <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
-              {/* Verdict badge */}
-              <div style={{
-                flexShrink: 0,
-                padding: '6px 14px', borderRadius: 6,
-                background: VC[state.verdict as VerdictVal].bg,
-                border: '1px solid ' + VC[state.verdict as VerdictVal].border,
-                boxShadow: VC[state.verdict as VerdictVal].glow,
-                textAlign: 'center',
-              }}>
-                <div style={{ fontSize: 8, fontFamily: 'JetBrains Mono,monospace', letterSpacing: '0.12em', color: VC[state.verdict as VerdictVal].text, marginBottom: 2 }}>VERDICT</div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: VC[state.verdict as VerdictVal].text }}>{state.verdict}</div>
-              </div>
-              {/* Reasoning */}
-              <p style={{ fontSize: 13, color: '#c4c7c8', lineHeight: 1.72, margin: 0, paddingTop: 2 }}>
-                {extractReasoning(state.synthesisText) || 'Analysis complete. See full report for details.'}
-              </p>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* ── Bottom bar ── */}
       <div style={{
@@ -479,16 +457,9 @@ export function IngestionView({ state, file, onFile, onBack }: {
         </div>
 
         {file && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0 }}>
-            <span style={{ fontSize: 11, fontFamily: 'JetBrains Mono,monospace', color: 'rgba(142,145,146,0.5)' }}>
-              {doneCount}/{SKILL_ORDER.length}
-            </span>
-            {isDone && (
-              <button onClick={onBack} style={{ padding: '7px 16px', borderRadius: 7, fontSize: 12, fontWeight: 500, background: '#fff', color: '#141313', border: 'none', cursor: 'pointer' }}>
-                New analysis
-              </button>
-            )}
-          </div>
+          <span style={{ fontSize: 11, fontFamily: 'JetBrains Mono,monospace', color: 'rgba(142,145,146,0.4)', flexShrink: 0 }}>
+            {doneCount} / {SKILL_ORDER.length}
+          </span>
         )}
       </div>
     </div>

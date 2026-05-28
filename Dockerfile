@@ -1,3 +1,12 @@
+# Stage 1: Build React UI with Bun
+FROM oven/bun:1 AS ui-builder
+WORKDIR /ui
+COPY ui/package.json ui/bun.lock* ./
+RUN bun install --frozen-lockfile
+COPY ui/ ./
+RUN bun run build
+
+# Stage 2: Python runtime with WeasyPrint + FastAPI
 FROM python:3.12-slim
 
 # WeasyPrint system dependencies
@@ -20,9 +29,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy source
 COPY . .
 
-# FastAPI server on port 8000
-ENV PORT=8000
+# Copy built UI from stage 1
+COPY --from=ui-builder /ui/dist ./ui/dist
+
 EXPOSE 8000
 
 CMD uvicorn server:app --host 0.0.0.0 --port ${PORT:-8000}
-

@@ -5,10 +5,10 @@ Install system deps first (macOS):
 Then add to project:
   uv add weasyprint jinja2
 """
+
 from __future__ import annotations
 
 import datetime
-import re
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
@@ -41,7 +41,7 @@ def build_monthly_context(
     return {
         "month_label": month_label,
         "generated": datetime.date.today().strftime("%B %d, %Y"),
-        "properties": properties,   # list of enriched ScoredProperty dicts
+        "properties": properties,  # list of enriched ScoredProperty dicts
         "top5": properties[:5],
     }
 
@@ -76,12 +76,23 @@ def build_om_context(
         "year_built": parse.get("year_built"),
         "asset_class": parse.get("asset_class", ""),
         "asking_price": parse.get("asking_price"),
-        "appraised_value": deed.get("appraised_value"),
+        # ATTOM is the authoritative appraised value; deed was a placeholder
+        "appraised_value": owner.get("appraised_value") or deed.get("appraised_value"),
         # Owner
         "owner_name": owner.get("owner_name", ""),
         "owner_state": owner.get("owner_state", ""),
         "out_of_state": owner.get("out_of_state", False),
-        # Loan
+        "absentee_owner": owner.get("absentee_owner", False),
+        "corporate_owner": owner.get("corporate_owner", False),
+        # Lender — ATTOM origination record; county clerk UCC is in deed_lender
+        "attom_lender": owner.get("attom_lender", ""),
+        "attom_loan_amount": owner.get("attom_loan_amount"),
+        "attom_loan_date": owner.get("attom_loan_date", ""),
+        "deed_lender": deed.get("lender", ""),
+        "deed_lender_date": deed.get("origination_date", ""),
+        "mechanics_lien_count": deed.get("mechanics_lien_count", 0) or 0,
+        "distress_signals": deed.get("distress_signals") or [],
+        # Loan fields from OM (usually null — kept for edge cases)
         "loan_type": fin.get("loan_type", ""),
         "loan_balance": fin.get("loan_original_balance"),
         "loan_rate": fin.get("loan_interest_rate"),
@@ -117,7 +128,12 @@ def _split_sections(text: str) -> list[dict]:
     for line in text.split("\n"):
         if line.startswith("## "):
             if current_heading is not None:
-                result.append({"heading": current_heading, "body": "\n".join(current_lines).strip()})
+                result.append(
+                    {
+                        "heading": current_heading,
+                        "body": "\n".join(current_lines).strip(),
+                    }
+                )
             current_heading = line[3:].strip()
             current_lines = []
         else:
@@ -125,6 +141,8 @@ def _split_sections(text: str) -> list[dict]:
                 current_lines.append(line)
 
     if current_heading is not None:
-        result.append({"heading": current_heading, "body": "\n".join(current_lines).strip()})
+        result.append(
+            {"heading": current_heading, "body": "\n".join(current_lines).strip()}
+        )
 
     return result

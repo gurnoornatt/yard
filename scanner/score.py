@@ -3,6 +3,7 @@ Motivation scoring for multifamily properties.
 Higher score = more seller pressure signals.
 Score is internal only — never shown to clients.
 """
+
 from __future__ import annotations
 
 import datetime
@@ -27,10 +28,9 @@ def score_property(p: dict) -> ScoredProperty:
     signals: list[str] = []
 
     # --- Loan maturity pressure (up to 40 pts) ---
-    orig_raw = (
-        p.get("mortgage", {}).get("FirstMortgageDate")
-        or p.get("mortgage", {}).get("originationDate")
-    )
+    orig_raw = p.get("mortgage", {}).get("FirstMortgageDate") or p.get(
+        "mortgage", {}
+    ).get("originationDate")
     if orig_raw:
         try:
             orig = datetime.date.fromisoformat(str(orig_raw)[:10])
@@ -43,14 +43,15 @@ def score_property(p: dict) -> ScoredProperty:
                 signals.append("Loan approaching 10-yr maturity (est.)")
             elif years >= 11:
                 score += 20
-                signals.append(f"Loan past typical term ({years:.0f} yrs since origination)")
+                signals.append(
+                    f"Loan past typical term ({years:.0f} yrs since origination)"
+                )
         except (ValueError, TypeError):
             pass
 
     # --- Long hold period (up to 15 pts) ---
-    sale_raw = (
-        p.get("sale", {}).get("saleTransDate")
-        or p.get("sale", {}).get("salesearchdate")
+    sale_raw = p.get("sale", {}).get("saleTransDate") or p.get("sale", {}).get(
+        "salesearchdate"
     )
     if sale_raw:
         try:
@@ -66,9 +67,8 @@ def score_property(p: dict) -> ScoredProperty:
             pass
 
     # --- Out-of-state owner (15 pts) ---
-    owner_state = (
-        p.get("owner", {}).get("mailingState")
-        or p.get("owner", {}).get("ownerState", "")
+    owner_state = p.get("owner", {}).get("mailingState") or p.get("owner", {}).get(
+        "ownerState", ""
     )
     if owner_state and str(owner_state).upper() not in ("TX", ""):
         score += 15
@@ -94,7 +94,9 @@ def score_property(p: dict) -> ScoredProperty:
         age = today.year - year_built
         if age >= 55:
             score += 15
-            signals.append(f"Aging asset built {year_built} — significant deferred capex likely")
+            signals.append(
+                f"Aging asset built {year_built} — significant deferred capex likely"
+            )
         elif age >= 40:
             score += 10
             signals.append(f"Older vintage ({year_built}) — capex cycle approaching")
@@ -114,8 +116,14 @@ def score_property(p: dict) -> ScoredProperty:
     # ATTOM snapshot has sqft not unit count — leave null; mini-pipeline fills via BCAD
     units = None
     year_built = _safe_int(p.get("summary", {}).get("yearbuilt"))
-    zip_code = str(addr_obj.get("postal1") or addr_obj.get("postal") or addr_obj.get("zip", ""))[:5]
-    attom_id = str(p.get("identifier", {}).get("attomId") or p.get("identifier", {}).get("Id") or "")
+    zip_code = str(
+        addr_obj.get("postal1") or addr_obj.get("postal") or addr_obj.get("zip", "")
+    )[:5]
+    attom_id = str(
+        p.get("identifier", {}).get("attomId")
+        or p.get("identifier", {}).get("Id")
+        or ""
+    )
 
     return ScoredProperty(
         attom_id=attom_id,

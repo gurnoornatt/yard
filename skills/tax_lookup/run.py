@@ -17,6 +17,7 @@ MODEL = "openai/gpt-4o-mini"
 
 def _parse_tax_blob(blob: str) -> dict:
     import datetime
+
     text = str(blob).lower()
     current_year = datetime.date.today().year
     # Only flag delinquent on explicit past-due language; "unpaid" alone can mean
@@ -38,6 +39,7 @@ def _parse_tax_blob(blob: str) -> dict:
 
 def _parse_extraction(result: dict | str | None) -> dict:
     import datetime
+
     if not result:
         return {}
     if isinstance(result, dict):

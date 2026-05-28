@@ -49,9 +49,7 @@ def run(params: dict) -> dict:
     ]
 
     open_count = sum(
-        1
-        for v in violations
-        if (v.get("status") or "").lower() in ("open", "active")
+        1 for v in violations if (v.get("status") or "").lower() in ("open", "active")
     )
 
     return {

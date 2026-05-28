@@ -21,8 +21,12 @@ def _get_comps(address: str, city: str, state: str, zip_: str) -> list:
     try:
         r = httpx.get(
             f"{ATTOM_BASE}/sale/snapshot",
-            params={"address1": address, "address2": address2, "radius": "1.5",
-                    "PROPERTYTYPE": "apartment|multi+family"},
+            params={
+                "address1": address,
+                "address2": address2,
+                "radius": "1.5",
+                "PROPERTYTYPE": "apartment|multi+family",
+            },
             headers=_attom_headers(),
             timeout=20,
         )

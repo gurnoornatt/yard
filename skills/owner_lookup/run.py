@@ -1,120 +1,110 @@
-import asyncio
 import json
 import os
 import re
 import sys
 
-from stagehand import AsyncStagehand
+import httpx
 
-BB_KEY = os.environ.get("BROWSERBASE_API_KEY", "")
-MODEL_KEY = os.environ.get("MODEL_API_KEY", "")
-BCAD_SEARCH = "https://bexar.trueautomation.com/clientdb/PropertySearch.aspx?cid=110"
-MODEL = "openai/gpt-4o-mini"
-
-
-def _parse_address(address: str) -> tuple[str, str]:
-    m = re.match(r"^(\d+)\s+(.+)$", address.strip())
-    return (m.group(1), m.group(2)) if m else ("", address.strip())
+ATTOM_KEY = os.environ.get("ATTOM_API_KEY", "")
+ATTOM_BASE = "https://api.gateway.attomdata.com/propertyapi/v1.0.0"
+ARCGIS = "https://maps.bexar.org/arcgis/rest/services/Parcels/MapServer/0/query"
 
 
-def _parse_extraction_blob(blob: str, current_url: str = "") -> dict:
-    """Parse the freeform extraction string Stagehand returns into structured fields."""
-    result = {}
-    lines = blob.replace("\\n", "\n").split("\n")
-    for line in lines:
-        line = line.strip()
-        if not line or ":" not in line:
-            continue
-        key, _, val = line.partition(":")
-        key = key.strip().lower()
-        val = val.strip()
-        if val.lower() in ("null", "none", "n/a", ""):
-            val = ""
-        if "owner name" in key:
-            result["owner_name"] = val
-        elif "owner" in key and "address" in key or "mailing" in key:
-            result["owner_address"] = val
-        elif "appraised" in key or "market value" in key or "total value" in key:
-            result["appraised_value"] = val
-        elif "property id" in key or "prop_id" in key or "id" == key:
-            result["bcad_prop_id"] = val
-
-    # Pull prop_id from URL if not found in text
-    if not result.get("bcad_prop_id") and current_url:
-        m = re.search(r"prop_id=(\d+)", current_url)
-        if m:
-            result["bcad_prop_id"] = m.group(1)
-
-    return result
+def _headers() -> dict:
+    return {"APIKey": ATTOM_KEY, "Accept": "application/json"}
 
 
-async def _scrape(street_num: str, street_name: str) -> dict:
-    async with AsyncStagehand(
-        browserbase_api_key=BB_KEY,
-        model_api_key=MODEL_KEY,
-    ) as client:
-        session = await client.sessions.start(model_name=MODEL)
-        try:
-            await session.navigate(url=BCAD_SEARCH)
+def _parse_state(mailing_address: str) -> str:
+    m = re.search(r"\b([A-Z]{2})\s+\d{5}", mailing_address.upper())
+    return m.group(1) if m else ""
 
-            # Single search box — type "236 Deerwood" and submit
-            search_term = f"{street_num} {street_name.split()[0]}"
-            await session.execute(
-                execute_options={
-                    "instruction": (
-                        f"The page has one search box labeled 'Property Search:'. "
-                        f"Type '{search_term}' in it and click the 'Search' button."
-                    ),
-                    "max_steps": 6,
-                },
-                agent_config={"model": MODEL},
-                timeout=60.0,
-            )
 
-            # Click first result
-            await session.execute(
-                execute_options={
-                    "instruction": "Click the first property link in the results list to open the property detail page.",
-                    "max_steps": 4,
-                },
-                agent_config={"model": MODEL},
-                timeout=45.0,
-            )
+def _attom_fetch(address: str, city_state_zip: str) -> dict:
+    r = httpx.get(
+        f"{ATTOM_BASE}/property/expandedprofile",
+        params={"address1": address, "address2": city_state_zip},
+        headers=_headers(),
+        timeout=20,
+    )
+    r.raise_for_status()
+    props = r.json().get("property") or []
+    return props[0] if props else {}
 
-            # Non-streaming extract — returns SessionExtractResponse
-            resp = await session.extract(
-                instruction=(
-                    "Extract from this property detail page: "
-                    "Owner Name, Owner Mailing Address, Total Appraised Value, Property ID from the URL."
-                ),
-                schema={
-                    "type": "object",
-                    "properties": {
-                        "owner_name": {"type": "string"},
-                        "owner_address": {"type": "string"},
-                        "appraised_value": {"type": "string"},
-                        "bcad_prop_id": {"type": "string"},
-                    },
-                    "required": ["owner_name"],
-                },
-                options={"model": MODEL},
-            )
 
-            raw = {}
-            if resp and resp.data and resp.data.result:
-                r = resp.data.result
-                # If schema was applied, r has keys directly
-                if isinstance(r, dict) and "owner_name" in r:
-                    raw = r
-                # Otherwise parse the extraction blob
-                elif isinstance(r, dict) and "extraction" in r:
-                    raw = _parse_extraction_blob(str(r["extraction"]))
-                elif isinstance(r, str):
-                    raw = _parse_extraction_blob(r)
+def _arcgis_fetch(address: str) -> dict:
+    """Fallback: Bexar County ArcGIS parcel layer (free, BCAD data)."""
+    m = re.match(r"^(\d+)\s+(\S+)", address.strip())
+    if not m:
+        return {}
+    number = m.group(1)
+    street_first = m.group(2)[:6].upper()
+    r = httpx.get(
+        ARCGIS,
+        params={
+            "where": f"Situs LIKE '%{number}%{street_first}%'",
+            "outFields": "Situs,Owner,AddrLn1,AddrLn2,AddrLn3,AddrCity,AddrSt,Zip,TotVal,PropID",
+            "returnGeometry": "false",
+            "resultRecordCount": 1,
+            "f": "json",
+        },
+        timeout=15,
+    )
+    feats = r.json().get("features") or []
+    if not feats:
+        return {}
+    a = feats[0]["attributes"]
+    addr_parts = [
+        a.get("AddrLn2") or a.get("AddrLn1") or "",
+        a.get("AddrCity") or "",
+        a.get("AddrSt") or "",
+        a.get("Zip") or "",
+    ]
+    mailing = ", ".join(p for p in addr_parts if p and p.upper() != "NULL")
+    return {
+        "owner_name": a.get("Owner") or "",
+        "owner_address": mailing,
+        "owner_state": a.get("AddrSt") or "",
+        "appraised_value": a.get("TotVal"),
+        "prop_id": str(int(a["PropID"])) if a.get("PropID") else "",
+        "source": "Bexar County ArcGIS (fallback)",
+    }
 
-            return raw
-        finally:
-            await session.end()
+
+def _build_result(
+    owner_name,
+    owner_address,
+    owner_state,
+    appraised_value,
+    absentee=False,
+    corporate=False,
+    attom_lender="",
+    attom_loan_amount=None,
+    attom_loan_date="",
+    attom_id="",
+    apn="",
+    source="",
+):
+    out_of_state = bool(owner_state and owner_state.upper() != "TX")
+    val_str = str(int(appraised_value)) if appraised_value else ""
+    return {
+        "job": "owner_lookup",
+        "status": "ok",
+        "data": {
+            "owner_name": owner_name,
+            "owner_address": owner_address,
+            "owner_state": owner_state.upper() if owner_state else "",
+            "out_of_state": out_of_state,
+            "absentee_owner": absentee,
+            "corporate_owner": corporate,
+            "appraised_value": val_str,
+            "attom_lender": attom_lender,
+            "attom_loan_amount": attom_loan_amount,
+            "attom_loan_date": attom_loan_date,
+            "attom_id": str(attom_id) if attom_id else "",
+            "apn": apn,
+            "source": source,
+        },
+    }
 
 
 def run(params: dict) -> dict:
@@ -123,11 +113,11 @@ def run(params: dict) -> dict:
         return {
             "job": "owner_lookup",
             "status": "data_unavailable",
-            "reason": "BCAD covers Bexar County, TX only",
+            "reason": "Owner lookup covers TX (Bexar County) only",
             "data": None,
         }
 
-    address = params.get("address", "")
+    address = params.get("address", "").strip()
     if not address:
         return {
             "job": "owner_lookup",
@@ -136,29 +126,79 @@ def run(params: dict) -> dict:
             "data": None,
         }
 
-    street_num, street_name = _parse_address(address)
+    city = params.get("city", "San Antonio").strip()
+    zip_code = params.get("zip", "").strip()
+    city_state_zip = f"{city}, {state or 'TX'} {zip_code}".strip(", ")
 
     try:
-        data = asyncio.run(_scrape(street_num, street_name))
-        owner_name = data.get("owner_name", "")
-        owner_address = data.get("owner_address", "")
-        bcad_prop_id = data.get("bcad_prop_id", "")
-        owner_state = ""
-        m = re.search(r"\b([A-Z]{2})\s+\d{5}", owner_address)
-        if m:
-            owner_state = m.group(1)
+        # --- Option A: ATTOM ---
+        prop = _attom_fetch(address, city_state_zip)
+        if prop:
+            assessment = prop.get("assessment") or {}
+            owner_block = assessment.get("owner") or {}
+            market = assessment.get("market") or {}
+            mortgage_block = assessment.get("mortgage") or {}
+
+            owner1 = owner_block.get("owner1") or {}
+            owner_name = owner1.get("fullName") or owner1.get("lastName") or ""
+            mailing_address = owner_block.get("mailingAddressOneLine") or ""
+            absentee_status = owner_block.get("absenteeOwnerStatus") or ""
+            corporate_indicator = owner_block.get("corporateIndicator") or ""
+
+            appraised_value = (
+                market.get("mktTtlValue")
+                or market.get("mktttlvalue")
+                or assessment.get("assessed", {}).get("assdTtlValue")
+                or assessment.get("assessed", {}).get("assdttlvalue")
+            )
+
+            first_mtg = mortgage_block.get("FirstConcurrent") or {}
+            identifier = prop.get("identifier") or {}
+
+            if owner_name:
+                owner_state = _parse_state(mailing_address)
+                return _build_result(
+                    owner_name=owner_name,
+                    owner_address=mailing_address,
+                    owner_state=owner_state,
+                    appraised_value=appraised_value,
+                    absentee=(absentee_status == "A"),
+                    corporate=(corporate_indicator == "Y"),
+                    attom_lender=first_mtg.get("lenderLastName") or "",
+                    attom_loan_amount=first_mtg.get("amount"),
+                    attom_loan_date=first_mtg.get("date") or "",
+                    attom_id=identifier.get("attomId") or identifier.get("Id") or "",
+                    apn=identifier.get("apn") or "",
+                    source="ATTOM (property/expandedprofile)",
+                )
+
+        # --- Option B: Bexar County ArcGIS fallback ---
+        arc = _arcgis_fetch(address)
+        if arc and arc.get("owner_name"):
+            owner_state = arc.get("owner_state") or _parse_state(
+                arc.get("owner_address", "")
+            )
+            return _build_result(
+                owner_name=arc["owner_name"],
+                owner_address=arc.get("owner_address", ""),
+                owner_state=owner_state,
+                appraised_value=arc.get("appraised_value"),
+                source=arc.get("source", "Bexar County ArcGIS"),
+            )
+
         return {
             "job": "owner_lookup",
-            "status": "ok",
-            "data": {
-                "owner_name": owner_name,
-                "owner_address": owner_address,
-                "owner_state": owner_state,
-                "out_of_state": owner_state not in ("TX", ""),
-                "appraised_value": data.get("appraised_value", ""),
-                "bcad_prop_id": bcad_prop_id,
-                "source": "BCAD (Bexar County Appraisal District)",
-            },
+            "status": "data_unavailable",
+            "reason": f"No owner data found via ATTOM or ArcGIS for: {address}",
+            "data": None,
+        }
+
+    except httpx.HTTPStatusError as e:
+        return {
+            "job": "owner_lookup",
+            "status": "error",
+            "reason": f"HTTP {e.response.status_code}: {e.response.text[:200]}",
+            "data": None,
         }
     except Exception as e:
         return {

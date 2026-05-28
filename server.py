@@ -11,11 +11,12 @@ from pathlib import Path
 from collections.abc import AsyncGenerator
 
 from dotenv import load_dotenv
+
 load_dotenv(Path(__file__).parent / ".env")
 
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import HTMLResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from openai import OpenAI
 
@@ -75,7 +76,7 @@ def call_skill(name: str, params: dict) -> dict:
     return mod.run(params)
 
 
-BROWSERBASE_SKILLS = {"owner_lookup", "tax_lookup", "portfolio_crawler"}
+BROWSERBASE_SKILLS = {"tax_lookup", "portfolio_crawler"}
 
 
 async def call_skill_async(name: str, params: dict) -> dict:
@@ -159,7 +160,8 @@ Write exactly these 7 sections (start NOW with ## Property Snapshot):
 [owner name, hold period if known, owner state (flag if out-of-state), portfolio size, motivation signals]
 
 ## Loan Situation
-[lender, loan amount, origination date, maturity date, loan type, refinance pressure assessment]
+[lender, loan amount, origination date, estimated maturity date, loan type, refinance pressure assessment.
+If loan_distress_signals or loan_assignments are present in the data, describe the assignment chain and what it suggests about the borrower's situation — multiple loan assignments in a short period indicate special servicing and likely forced sale pressure.]
 
 ## Financial Underwrite
 [NOI estimate with source, cap rate at ask if available, price per unit if available, value-add payback math if available. Then: for each bedroom type, show in-place rent vs HUD SAFMR vs Census median and the discount-to-market percentage. If underwrite data is null, state that financial section was not found in the OM.]
@@ -177,9 +179,49 @@ End with: Next move: [one concrete action].
 """
 
 
+async def _log_run(
+    address: str,
+    verdict: str,
+    confidence: str,
+    skill_results: list,
+    synthesis_chars: int,
+    total_elapsed: float,
+    pdf_filename: str = "",
+):
+    try:
+        import httpx as _httpx
+
+        supabase_url = os.environ.get("SUPABASE_URL", "")
+        supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+        if not supabase_url or not supabase_key:
+            return
+        await _httpx.AsyncClient().post(
+            f"{supabase_url}/rest/v1/pipeline_runs",
+            headers={
+                "apikey": supabase_key,
+                "Authorization": f"Bearer {supabase_key}",
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal",
+            },
+            json={
+                "type": "om_analysis",
+                "property_address": address,
+                "verdict": verdict,
+                "confidence": confidence,
+                "total_elapsed_s": total_elapsed,
+                "skill_results": skill_results,
+                "synthesis_chars": synthesis_chars,
+            },
+            timeout=5,
+        )
+    except Exception:
+        pass
+
+
 async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, None]:
     ctx: dict = {}  # address context, grows as skills complete
     all_data: dict = {}
+    skill_log: list = []
     property_id = "upload"
     pipeline_start = time.time()
     log.info("=== ANALYSIS START: %s (%d bytes) ===", filename, len(pdf_bytes))
@@ -209,8 +251,11 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
                     # Flatten financial fields into ctx for the underwrite skill
                     financials = ctx.get("financials") or {}
                     for _fkey in [
-                        "unit_mix", "occupancy_rate", "annual_in_place_revenue",
-                        "total_expense_per_unit_annual", "value_add_rent_premium_per_unit",
+                        "unit_mix",
+                        "occupancy_rate",
+                        "annual_in_place_revenue",
+                        "total_expense_per_unit_annual",
+                        "value_add_rent_premium_per_unit",
                         "renovation_cost_per_unit",
                     ]:
                         if financials.get(_fkey) is not None:
@@ -222,14 +267,64 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
                 # Merge key fields back into ctx so downstream skills can use them
                 data = result.get("data") or {}
                 if skill_name == "owner_lookup" and isinstance(data, dict):
-                    if data.get("owner_name"):
-                        ctx["owner_name"] = data["owner_name"]
-                    if data.get("bcad_prop_id"):
-                        ctx["bcad_prop_id"] = data["bcad_prop_id"]
+                    for field in (
+                        "owner_name",
+                        "attom_lender",
+                        "attom_loan_amount",
+                        "attom_loan_date",
+                        "absentee_owner",
+                        "corporate_owner",
+                        "attom_id",
+                        "apn",
+                    ):
+                        if data.get(field):
+                            ctx[field] = data[field]
 
                 elif skill_name == "deed_lookup" and isinstance(data, dict):
-                    if data.get("maturity_date"):
-                        ctx["deed_maturity_date"] = data["maturity_date"]
+                    # Estimate maturity from origination date (commercial multifamily = 5-yr default)
+                    orig = data.get("origination_date", "")
+                    if orig and not ctx.get("deed_maturity_date"):
+                        try:
+                            from datetime import date as _date
+                            import re as _re
+
+                            # Parse MM/DD/YYYY or YYYY-MM-DD
+                            m_orig = _re.search(
+                                r"(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})", orig
+                            )
+                            y4_orig = _re.match(r"(\d{4})-(\d{2})-(\d{2})", orig)
+                            if y4_orig:
+                                orig_d = _date(
+                                    int(y4_orig.group(1)),
+                                    int(y4_orig.group(2)),
+                                    int(y4_orig.group(3)),
+                                )
+                            elif m_orig:
+                                orig_d = _date(
+                                    int(m_orig.group(3)),
+                                    int(m_orig.group(1)),
+                                    int(m_orig.group(2)),
+                                )
+                            else:
+                                orig_d = None
+                            if orig_d:
+                                # 5-year term estimate (conservative — catches most bridge loans)
+                                maturity_d = _date(
+                                    orig_d.year + 5, orig_d.month, orig_d.day
+                                )
+                                ctx["deed_maturity_date"] = maturity_d.isoformat()
+                                log.info(
+                                    "  maturity estimated: %s (orig=%s + 5yr)",
+                                    maturity_d,
+                                    orig_d,
+                                )
+                        except Exception as _e:
+                            log.warning("  maturity estimation failed: %s", _e)
+                    # Surface distress signals to context for synthesis
+                    if data.get("distress_signals"):
+                        ctx["loan_distress_signals"] = data["distress_signals"]
+                    if data.get("assignments"):
+                        ctx["loan_assignments"] = data["assignments"]
 
             elapsed = round(time.time() - skill_start, 2)
             status = result.get("status", "ok")
@@ -238,6 +333,14 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
                 log.info("    reason: %s", result.get("reason", "—"))
 
             all_data[skill_name] = result.get("data")
+            skill_log.append(
+                {
+                    "skill": skill_name,
+                    "status": status,
+                    "elapsed_s": elapsed,
+                    "has_data": all_data[skill_name] is not None,
+                }
+            )
             yield sse(
                 "skill_complete",
                 {
@@ -268,6 +371,12 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
         "maturity_estimator",
     ]
     research_summary = {k: all_data.get(k) for k in research_keys}
+
+    # Inject distress signals derived from deed_lookup into synthesis context
+    if ctx.get("loan_distress_signals"):
+        research_summary["loan_distress_signals"] = ctx["loan_distress_signals"]
+    if ctx.get("loan_assignments"):
+        research_summary["loan_assignments"] = ctx["loan_assignments"]
 
     # Data quality score
     clean = [k for k in QUALITY_SKILLS if all_data.get(k) is not None]
@@ -329,17 +438,36 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
         yield sse("synthesis_chunk", {"text": f"\n\n[Synthesis error: {e}]"})
 
     total = round(time.time() - pipeline_start, 1)
-    log.info("=== ANALYSIS DONE: verdict=%s confidence=%s total=%.1fs ===", verdict, confidence, total)
-    yield sse("verdict", {
-        "recommendation": verdict,
-        "full_text": full_text,
-        "data_quality": {
-            "confidence": confidence,
-            "sources_clean": score,
-            "sources_total": len(QUALITY_SKILLS),
-            "missing": missing,
+    log.info(
+        "=== ANALYSIS DONE: verdict=%s confidence=%s total=%.1fs ===",
+        verdict,
+        confidence,
+        total,
+    )
+    yield sse(
+        "verdict",
+        {
+            "recommendation": verdict,
+            "full_text": full_text,
+            "data_quality": {
+                "confidence": confidence,
+                "sources_clean": score,
+                "sources_total": len(QUALITY_SKILLS),
+                "missing": missing,
+            },
         },
-    })
+    )
+    asyncio.create_task(
+        _log_run(
+            address=ctx.get("address", filename),
+            verdict=verdict,
+            confidence=confidence,
+            skill_results=skill_log,
+            synthesis_chars=len(full_text),
+            total_elapsed=total,
+            pdf_filename=filename,
+        )
+    )
     yield sse("done", {})
 
 
@@ -367,33 +495,370 @@ async def export_analysis(body: dict):
 
     try:
         from reports.generate import build_om_context, render_pdf
+
         context = build_om_context(synthesis_text, verdict, all_data, data_quality)
         pdf_bytes = render_pdf("om_analysis.html", context)
     except ImportError:
         return Response(
-            content=json.dumps({"error": "WeasyPrint not installed. Run: brew install cairo pango gdk-pixbuf && uv add weasyprint jinja2"}),
+            content=json.dumps(
+                {
+                    "error": "WeasyPrint not installed. Run: brew install cairo pango gdk-pixbuf && uv add weasyprint jinja2"
+                }
+            ),
             status_code=503,
             media_type="application/json",
         )
     except Exception as e:
         log.error("PDF generation error: %s", e)
-        return Response(content=json.dumps({"error": str(e)}), status_code=500, media_type="application/json")
+        return Response(
+            content=json.dumps({"error": str(e)}),
+            status_code=500,
+            media_type="application/json",
+        )
 
+    email_status = None
     if recipient_email:
         try:
             from reports.deliver import send_om_report
-            send_om_report(recipient_email, pdf_bytes, property_address)
-            log.info("OM report emailed to %s", recipient_email)
+
+            email_id = send_om_report(recipient_email, pdf_bytes, property_address)
+            log.info("OM report emailed to %s (id=%s)", recipient_email, email_id)
+            email_status = {"sent": True, "id": email_id}
         except Exception as e:
             log.error("Email delivery error: %s", e)
+            email_status = {"sent": False, "error": str(e)}
 
     safe = re.sub(r"[^\w]", "_", property_address)[:40]
     filename = f"Noor_Analysis_{safe}.pdf"
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    if email_status:
+        headers["X-Email-Status"] = json.dumps(email_status)
+    return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
+
+
+@app.get("/health")
+async def health_check():
+    """Diagnostic endpoint: checks every API key and dependency. Green = ready, red = broken."""
+    import httpx as _httpx
+
+    checks: dict[str, dict] = {}
+
+    # --- WeasyPrint ---
+    try:
+        from weasyprint import HTML as _WP  # noqa: F401
+
+        checks["weasyprint"] = {"status": "ok", "detail": "importable"}
+    except Exception as e:
+        checks["weasyprint"] = {
+            "status": "error",
+            "detail": str(e),
+            "fix": "brew install cairo pango gdk-pixbuf && uv add weasyprint",
+        }
+
+    # --- PDF templates ---
+    from reports.generate import TEMPLATES_DIR
+
+    for tmpl in ("om_analysis.html", "monthly_report.html"):
+        key = f"template:{tmpl}"
+        p = TEMPLATES_DIR / tmpl
+        checks[key] = (
+            {"status": "ok"}
+            if p.exists()
+            else {"status": "error", "detail": f"missing: {p}"}
+        )
+
+    # --- API keys (presence only — no live calls to avoid costs) ---
+    key_checks = {
+        "OPENROUTER_API_KEY": {"fix": "Get from openrouter.ai"},
+        "ATTOM_API_KEY": {"fix": "Get from api.gateway.attomdata.com"},
+        "RESEND_API_KEY": {"fix": "Get from resend.com"},
+        "BROWSERBASE_API_KEY": {"fix": "Get from browserbase.com"},
+        "MODEL_API_KEY": {"fix": "OpenAI key for Stagehand browser agent"},
+        "CENSUS_API_KEY": {"fix": "Free at api.census.gov/data/key_signup.html"},
+        "SUPABASE_URL": {"fix": "Get from supabase.com project settings"},
+        "SUPABASE_SERVICE_ROLE_KEY": {
+            "fix": "Get from supabase.com project settings > API"
+        },
+    }
+    for env_key, meta in key_checks.items():
+        val = os.environ.get(env_key, "")
+        if val:
+            checks[f"env:{env_key}"] = {
+                "status": "ok",
+                "detail": f"set ({len(val)} chars)",
+            }
+        else:
+            checks[f"env:{env_key}"] = {
+                "status": "error",
+                "detail": "NOT SET",
+                "fix": meta["fix"],
+            }
+
+    # --- Resend domain live check ---
+    resend_key = os.environ.get("RESEND_API_KEY", "")
+    if resend_key:
+        try:
+            async with _httpx.AsyncClient() as client:
+                r = await client.get(
+                    "https://api.resend.com/domains",
+                    headers={"Authorization": f"Bearer {resend_key}"},
+                    timeout=5,
+                )
+            domains = r.json().get("data", [])
+            verified = [d["name"] for d in domains if d.get("status") == "verified"]
+            if verified:
+                checks["resend:domain"] = {
+                    "status": "ok",
+                    "detail": f"verified domains: {', '.join(verified)}",
+                }
+            else:
+                checks["resend:domain"] = {
+                    "status": "error",
+                    "detail": "No verified domains",
+                    "fix": "Add domain at resend.com/domains",
+                }
+        except Exception as e:
+            checks["resend:domain"] = {"status": "error", "detail": str(e)}
+
+    # --- Supabase connectivity ---
+    sb_url = os.environ.get("SUPABASE_URL", "")
+    sb_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+    if sb_url and sb_key:
+        try:
+            async with _httpx.AsyncClient() as client:
+                r = await client.get(
+                    f"{sb_url}/rest/v1/pipeline_runs",
+                    headers={"apikey": sb_key, "Authorization": f"Bearer {sb_key}"},
+                    params={"select": "id", "limit": "1"},
+                    timeout=5,
+                )
+            checks["supabase:pipeline_runs"] = {
+                "status": "ok",
+                "detail": f"HTTP {r.status_code}",
+            }
+        except Exception as e:
+            checks["supabase:pipeline_runs"] = {"status": "error", "detail": str(e)}
+
+    errors = [k for k, v in checks.items() if v["status"] == "error"]
+    overall = "ok" if not errors else "degraded"
+
+    return {
+        "status": overall,
+        "errors": errors,
+        "checks": checks,
+    }
+
+
+@app.get("/admin", response_class=HTMLResponse)
+async def admin_dashboard():
+    import httpx as _httpx
+
+    supabase_url = os.environ.get("SUPABASE_URL", "")
+    supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+    runs = []
+    fetch_error = ""
+
+    if supabase_url and supabase_key:
+        try:
+            async with _httpx.AsyncClient() as client:
+                resp = await client.get(
+                    f"{supabase_url}/rest/v1/pipeline_runs",
+                    headers={
+                        "apikey": supabase_key,
+                        "Authorization": f"Bearer {supabase_key}",
+                    },
+                    params={"select": "*", "order": "created_at.desc", "limit": "20"},
+                    timeout=10,
+                )
+                resp.raise_for_status()
+                runs = resp.json()
+        except Exception as e:
+            fetch_error = str(e)
+
+    # Aggregate stats
+    total = len(runs)
+    successes = sum(
+        1 for r in runs if r.get("verdict") in ("PURSUE", "WATCHLIST", "PASS")
     )
+    success_rate = round(successes / total * 100, 1) if total else 0
+    elapsed_vals = [
+        r["total_elapsed_s"] for r in runs if r.get("total_elapsed_s") is not None
+    ]
+    avg_elapsed = round(sum(elapsed_vals) / len(elapsed_vals), 1) if elapsed_vals else 0
+
+    # Per-skill reliability across all runs
+    skill_stats: dict[str, dict] = {}
+    for r in runs:
+        for sk in r.get("skill_results") or []:
+            name = sk.get("skill", "?")
+            if name not in skill_stats:
+                skill_stats[name] = {"total": 0, "ok": 0, "with_data": 0}
+            skill_stats[name]["total"] += 1
+            if sk.get("status") == "ok":
+                skill_stats[name]["ok"] += 1
+            if sk.get("has_data"):
+                skill_stats[name]["with_data"] += 1
+
+    def verdict_badge(v: str) -> str:
+        colors = {"PURSUE": "#22c55e", "WATCHLIST": "#f59e0b", "PASS": "#ef4444"}
+        bg = colors.get(v, "#64748b")
+        return (
+            f'<span style="background:{bg};color:#fff;padding:2px 8px;'
+            f'border-radius:9999px;font-size:11px;font-weight:700;">{v or "—"}</span>'
+        )
+
+    def skill_dots(skill_results: list) -> str:
+        if not skill_results:
+            return "—"
+        ok = sum(1 for s in skill_results if s.get("has_data"))
+        total_sk = len(skill_results)
+        pct = int(ok / total_sk * 100) if total_sk else 0
+        color = "#22c55e" if pct >= 70 else "#f59e0b" if pct >= 40 else "#ef4444"
+        return f'<span style="color:{color};font-weight:600;">{ok}/{total_sk}</span>'
+
+    rows_html = ""
+    for r in runs:
+        ts = (r.get("created_at") or "")[:16].replace("T", " ")
+        rows_html += f"""
+        <tr>
+          <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:13px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+              title="{r.get("property_address", "")}">{r.get("property_address") or "—"}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;">{verdict_badge(r.get("verdict", ""))}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;font-size:13px;">{r.get("confidence") or "—"}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;font-size:13px;">{round(r["total_elapsed_s"], 1) if r.get("total_elapsed_s") else "—"}s</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;text-align:center;">{skill_dots(r.get("skill_results") or [])}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#64748b;">{r.get("type", "")}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#64748b;">{ts}</td>
+        </tr>"""
+
+    skill_rows_html = ""
+    for sk_name, stats in skill_stats.items():
+        pct = round(stats["ok"] / stats["total"] * 100, 0) if stats["total"] else 0
+        data_pct = (
+            round(stats["with_data"] / stats["total"] * 100, 0) if stats["total"] else 0
+        )
+        bar_color = "#22c55e" if pct >= 80 else "#f59e0b" if pct >= 50 else "#ef4444"
+        skill_rows_html += f"""
+        <tr>
+          <td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;font-size:13px;font-family:monospace;">{sk_name}</td>
+          <td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;text-align:center;font-size:13px;">{stats["total"]}</td>
+          <td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div style="flex:1;background:#e2e8f0;border-radius:4px;height:8px;">
+                <div style="width:{pct}%;background:{bar_color};border-radius:4px;height:8px;"></div>
+              </div>
+              <span style="font-size:12px;color:#334155;min-width:36px;">{int(pct)}%</span>
+            </div>
+          </td>
+          <td style="padding:7px 12px;border-bottom:1px solid #e2e8f0;text-align:center;font-size:13px;">{int(data_pct)}%</td>
+        </tr>"""
+
+    error_banner = (
+        f'<div style="background:#fef2f2;border:1px solid #fca5a5;color:#b91c1c;padding:10px 16px;'
+        f'border-radius:6px;margin-bottom:16px;font-size:13px;">Supabase fetch error: {fetch_error}</div>'
+        if fetch_error
+        else ""
+    )
+    no_env_banner = (
+        '<div style="background:#fffbeb;border:1px solid #fcd34d;color:#92400e;padding:10px 16px;'
+        'border-radius:6px;margin-bottom:16px;font-size:13px;">SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY '
+        "not configured — no data available.</div>"
+        if not (supabase_url and supabase_key)
+        else ""
+    )
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Sentinel — Pipeline Monitor</title>
+  <style>
+    *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #f8fafc; color: #1e293b; }}
+    .topbar {{ background: #0f172a; color: #fff; padding: 14px 32px;
+               display: flex; align-items: center; gap: 12px; }}
+    .topbar h1 {{ font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }}
+    .topbar .badge {{ background: #1e40af; font-size: 11px; padding: 2px 8px;
+                      border-radius: 9999px; font-weight: 600; }}
+    .container {{ max-width: 1100px; margin: 32px auto; padding: 0 24px; }}
+    .stats {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 32px; }}
+    .stat {{ background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+             padding: 20px 24px; }}
+    .stat .label {{ font-size: 12px; color: #64748b; font-weight: 600;
+                    text-transform: uppercase; letter-spacing: .5px; }}
+    .stat .value {{ font-size: 32px; font-weight: 700; color: #0f172a; margin-top: 6px; }}
+    .card {{ background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+             margin-bottom: 24px; overflow: hidden; }}
+    .card-header {{ padding: 14px 20px; border-bottom: 1px solid #e2e8f0;
+                    font-weight: 700; font-size: 14px; color: #0f172a;
+                    background: #f8fafc; }}
+    table {{ width: 100%; border-collapse: collapse; }}
+    th {{ padding: 9px 12px; text-align: left; font-size: 11px; font-weight: 700;
+          color: #64748b; text-transform: uppercase; letter-spacing: .5px;
+          border-bottom: 2px solid #e2e8f0; background: #f8fafc; }}
+    tr:hover td {{ background: #f8fafc; }}
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <h1>Sentinel Pipeline Monitor</h1>
+    <span class="badge">INTERNAL</span>
+  </div>
+  <div class="container">
+    {no_env_banner}{error_banner}
+    <div class="stats">
+      <div class="stat">
+        <div class="label">Total Runs (last 20)</div>
+        <div class="value">{total}</div>
+      </div>
+      <div class="stat">
+        <div class="label">Verdict Success Rate</div>
+        <div class="value">{success_rate}%</div>
+      </div>
+      <div class="stat">
+        <div class="label">Avg Pipeline Time</div>
+        <div class="value">{avg_elapsed}s</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">Recent Runs</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Address</th>
+            <th style="text-align:center">Verdict</th>
+            <th style="text-align:center">Confidence</th>
+            <th style="text-align:center">Elapsed</th>
+            <th style="text-align:center">Skills OK</th>
+            <th>Type</th>
+            <th>Timestamp (UTC)</th>
+          </tr>
+        </thead>
+        <tbody>{rows_html if rows_html else '<tr><td colspan="7" style="padding:24px;text-align:center;color:#94a3b8;">No runs recorded yet.</td></tr>'}</tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-header">Skill Reliability</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Skill</th>
+            <th style="text-align:center">Runs</th>
+            <th>Status OK Rate</th>
+            <th style="text-align:center">Data Return Rate</th>
+          </tr>
+        </thead>
+        <tbody>{skill_rows_html if skill_rows_html else '<tr><td colspan="4" style="padding:24px;text-align:center;color:#94a3b8;">No skill data yet.</td></tr>'}</tbody>
+      </table>
+    </div>
+  </div>
+</body>
+</html>"""
+    return HTMLResponse(content=html)
 
 
 @app.get("/health")
