@@ -113,7 +113,9 @@ async def call_skill_async(name: str, params: dict) -> dict:
             "reason": "BCAD unavailable",
             "data": None,
         }
-    return call_skill(name, params)
+    # Run blocking skill in thread pool so it doesn't stall the event loop
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, call_skill, name, params)
 
 
 def sse(event: str, data: dict) -> str:
@@ -218,144 +220,132 @@ async def _log_run(
         pass
 
 
+def _apply_deed_ctx(ctx: dict, data: dict) -> None:
+    """Merge deed_lookup result into ctx: maturity estimate + distress signals."""
+    orig = data.get("origination_date", "")
+    if orig and not ctx.get("deed_maturity_date"):
+        try:
+            from datetime import date as _date
+            import re as _re
+            m_orig = _re.search(r"(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})", orig)
+            y4_orig = _re.match(r"(\d{4})-(\d{2})-(\d{2})", orig)
+            if y4_orig:
+                orig_d = _date(int(y4_orig.group(1)), int(y4_orig.group(2)), int(y4_orig.group(3)))
+            elif m_orig:
+                orig_d = _date(int(m_orig.group(3)), int(m_orig.group(1)), int(m_orig.group(2)))
+            else:
+                orig_d = None
+            if orig_d:
+                maturity_d = _date(orig_d.year + 5, orig_d.month, orig_d.day)
+                ctx["deed_maturity_date"] = maturity_d.isoformat()
+                log.info("  maturity estimated: %s (orig=%s + 5yr)", maturity_d, orig_d)
+        except Exception as _e:
+            log.warning("  maturity estimation failed: %s", _e)
+    if data.get("distress_signals"):
+        ctx["loan_distress_signals"] = data["distress_signals"]
+    if data.get("assignments"):
+        ctx["loan_assignments"] = data["assignments"]
+
+
 async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, None]:
-    ctx: dict = {}  # address context, grows as skills complete
+    ctx: dict = {}
     all_data: dict = {}
     skill_log: list = []
     property_id = "upload"
     pipeline_start = time.time()
     log.info("=== ANALYSIS START: %s (%d bytes) ===", filename, len(pdf_bytes))
 
-    for skill_name in SKILL_SEQUENCE:
-        yield sse(
-            "skill_start", {"skill": skill_name, "label": SKILL_LABELS[skill_name]}
-        )
-        await asyncio.sleep(0)
-        skill_start = time.time()
+    # ── WAVE 1: parse_om ──────────────────────────────────────────────────────
+    yield sse("skill_start", {"skill": "parse_om", "label": SKILL_LABELS["parse_om"]})
+    await asyncio.sleep(0)
+    t0 = time.time()
+    try:
+        with tempfile.NamedTemporaryFile(
+            suffix=".pdf",
+            prefix=re.sub(r"[^\w]", "_", filename.replace(".pdf", "")) + "_",
+            delete=False,
+        ) as f:
+            f.write(pdf_bytes)
+            tmp_path = f.name
+        result = call_skill("parse_om", {"pdf_path": tmp_path})
+        Path(tmp_path).unlink(missing_ok=True)
+        if result.get("status") == "ok" and result.get("data"):
+            ctx = dict(result["data"])
+            property_id = _slug(ctx.get("address", ""), ctx.get("zip", ""))
+            financials = ctx.get("financials") or {}
+            for _fkey in [
+                "unit_mix", "occupancy_rate", "annual_in_place_revenue",
+                "total_expense_per_unit_annual", "value_add_rent_premium_per_unit",
+                "renovation_cost_per_unit",
+            ]:
+                if financials.get(_fkey) is not None:
+                    ctx[_fkey] = financials[_fkey]
+        status = result.get("status", "ok")
+        elapsed = round(time.time() - t0, 2)
+        log.info("  ✓ parse_om [%s] %.2fs", status, elapsed)
+        all_data["parse_om"] = result.get("data")
+        skill_log.append({"skill": "parse_om", "status": status, "elapsed_s": elapsed, "has_data": all_data["parse_om"] is not None})
+        yield sse("skill_complete", {"skill": "parse_om", "status": status, "data": result.get("data"), "property_id": property_id})
+    except Exception as e:
+        log.error("  ✗ parse_om EXCEPTION: %s", e)
+        yield sse("skill_error", {"skill": "parse_om", "error": str(e)})
 
+    # ── WAVE 2: owner_lookup (fast ATTOM call; gives bcad_prop_id to tax_lookup) ──
+    yield sse("skill_start", {"skill": "owner_lookup", "label": SKILL_LABELS["owner_lookup"]})
+    await asyncio.sleep(0)
+    t0 = time.time()
+    try:
+        result = await call_skill_async("owner_lookup", ctx)
+        data = result.get("data") or {}
+        for field in ("owner_name", "attom_lender", "attom_loan_amount", "attom_loan_date",
+                      "absentee_owner", "corporate_owner", "attom_id", "apn", "bcad_prop_id"):
+            if data.get(field):
+                ctx[field] = data[field]
+        status = result.get("status", "ok")
+        elapsed = round(time.time() - t0, 2)
+        log.info("  ✓ owner_lookup [%s] %.2fs", status, elapsed)
+        all_data["owner_lookup"] = result.get("data")
+        skill_log.append({"skill": "owner_lookup", "status": status, "elapsed_s": elapsed, "has_data": all_data["owner_lookup"] is not None})
+        yield sse("skill_complete", {"skill": "owner_lookup", "status": status, "data": result.get("data"), "property_id": property_id})
+    except Exception as e:
+        log.error("  ✗ owner_lookup EXCEPTION: %s", e)
+        yield sse("skill_error", {"skill": "owner_lookup", "error": str(e)})
+
+    # ── WAVE 3: all remaining enrichment skills in parallel ───────────────────
+    PARALLEL_SKILLS = [
+        "deed_lookup", "portfolio_crawler", "permit_lookup",
+        "tax_lookup", "violations_lookup", "comps_lookup",
+        "underwrite", "maturity_estimator", "synthesize_analysis",
+    ]
+    for name in PARALLEL_SKILLS:
+        yield sse("skill_start", {"skill": name, "label": SKILL_LABELS[name]})
+    await asyncio.sleep(0)
+
+    ctx_snap = dict(ctx)  # snapshot so all parallel skills see consistent state
+
+    async def _run_parallel(name: str):
+        t = time.time()
         try:
-            if skill_name == "parse_om":
-                with tempfile.NamedTemporaryFile(
-                    suffix=".pdf",
-                    prefix=re.sub(r"[^\w]", "_", filename.replace(".pdf", "")) + "_",
-                    delete=False,
-                ) as f:
-                    f.write(pdf_bytes)
-                    tmp_path = f.name
-                result = call_skill("parse_om", {"pdf_path": tmp_path})
-                Path(tmp_path).unlink(missing_ok=True)
+            res = await call_skill_async(name, dict(ctx_snap))
+            return name, res, round(time.time() - t, 2), None
+        except Exception as exc:
+            return name, {"status": "error", "data": None, "reason": str(exc)}, round(time.time() - t, 2), str(exc)
 
-                if result.get("status") == "ok" and result.get("data"):
-                    ctx = dict(result["data"])
-                    property_id = _slug(ctx.get("address", ""), ctx.get("zip", ""))
-                    # Flatten financial fields into ctx for the underwrite skill
-                    financials = ctx.get("financials") or {}
-                    for _fkey in [
-                        "unit_mix",
-                        "occupancy_rate",
-                        "annual_in_place_revenue",
-                        "total_expense_per_unit_annual",
-                        "value_add_rent_premium_per_unit",
-                        "renovation_cost_per_unit",
-                    ]:
-                        if financials.get(_fkey) is not None:
-                            ctx[_fkey] = financials[_fkey]
-
-            else:
-                result = await call_skill_async(skill_name, ctx)
-
-                # Merge key fields back into ctx so downstream skills can use them
-                data = result.get("data") or {}
-                if skill_name == "owner_lookup" and isinstance(data, dict):
-                    for field in (
-                        "owner_name",
-                        "attom_lender",
-                        "attom_loan_amount",
-                        "attom_loan_date",
-                        "absentee_owner",
-                        "corporate_owner",
-                        "attom_id",
-                        "apn",
-                    ):
-                        if data.get(field):
-                            ctx[field] = data[field]
-
-                elif skill_name == "deed_lookup" and isinstance(data, dict):
-                    # Estimate maturity from origination date (commercial multifamily = 5-yr default)
-                    orig = data.get("origination_date", "")
-                    if orig and not ctx.get("deed_maturity_date"):
-                        try:
-                            from datetime import date as _date
-                            import re as _re
-
-                            # Parse MM/DD/YYYY or YYYY-MM-DD
-                            m_orig = _re.search(
-                                r"(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})", orig
-                            )
-                            y4_orig = _re.match(r"(\d{4})-(\d{2})-(\d{2})", orig)
-                            if y4_orig:
-                                orig_d = _date(
-                                    int(y4_orig.group(1)),
-                                    int(y4_orig.group(2)),
-                                    int(y4_orig.group(3)),
-                                )
-                            elif m_orig:
-                                orig_d = _date(
-                                    int(m_orig.group(3)),
-                                    int(m_orig.group(1)),
-                                    int(m_orig.group(2)),
-                                )
-                            else:
-                                orig_d = None
-                            if orig_d:
-                                # 5-year term estimate (conservative — catches most bridge loans)
-                                maturity_d = _date(
-                                    orig_d.year + 5, orig_d.month, orig_d.day
-                                )
-                                ctx["deed_maturity_date"] = maturity_d.isoformat()
-                                log.info(
-                                    "  maturity estimated: %s (orig=%s + 5yr)",
-                                    maturity_d,
-                                    orig_d,
-                                )
-                        except Exception as _e:
-                            log.warning("  maturity estimation failed: %s", _e)
-                    # Surface distress signals to context for synthesis
-                    if data.get("distress_signals"):
-                        ctx["loan_distress_signals"] = data["distress_signals"]
-                    if data.get("assignments"):
-                        ctx["loan_assignments"] = data["assignments"]
-
-            elapsed = round(time.time() - skill_start, 2)
-            status = result.get("status", "ok")
-            log.info("  ✓ %s [%s] %.2fs", skill_name, status, elapsed)
-            if status not in ("ok",):
-                log.info("    reason: %s", result.get("reason", "—"))
-
-            all_data[skill_name] = result.get("data")
-            skill_log.append(
-                {
-                    "skill": skill_name,
-                    "status": status,
-                    "elapsed_s": elapsed,
-                    "has_data": all_data[skill_name] is not None,
-                }
-            )
-            yield sse(
-                "skill_complete",
-                {
-                    "skill": skill_name,
-                    "status": status,
-                    "data": result.get("data"),
-                    "property_id": property_id,
-                },
-            )
-
-        except Exception as e:
-            log.error("  ✗ %s EXCEPTION: %s", skill_name, e)
-            yield sse("skill_error", {"skill": skill_name, "error": str(e)})
-
-        await asyncio.sleep(0.05)
+    tasks = [asyncio.create_task(_run_parallel(n)) for n in PARALLEL_SKILLS]
+    for coro in asyncio.as_completed(tasks):
+        name, result, elapsed, err = await coro
+        data = result.get("data") or {}
+        status = result.get("status", "ok")
+        log.info("  ✓ %s [%s] %.2fs", name, status, elapsed)
+        if name == "deed_lookup" and isinstance(data, dict):
+            _apply_deed_ctx(ctx, data)
+        all_data[name] = result.get("data")
+        skill_log.append({"skill": name, "status": status, "elapsed_s": elapsed, "has_data": all_data[name] is not None})
+        if err:
+            yield sse("skill_error", {"skill": name, "error": err})
+        else:
+            yield sse("skill_complete", {"skill": name, "status": status, "data": result.get("data"), "property_id": property_id})
+        await asyncio.sleep(0)
 
     # Build research summary for synthesis
     research_keys = [
@@ -418,7 +408,7 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
             model="nvidia/nemotron-3-super-120b-a12b",
             messages=[{"role": "user", "content": prompt}],
             stream=True,
-            max_tokens=8000,
+            max_tokens=1500,
         )
         for chunk in stream:
             if not chunk.choices:
