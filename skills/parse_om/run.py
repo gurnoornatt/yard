@@ -232,7 +232,7 @@ def _extract_json(raw: str) -> dict:
 def _call_llm(text: str) -> dict:
     client = OpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=NVIDIA_KEY, timeout=30.0)
     resp = client.chat.completions.create(
-        model="nvidia/nemotron-3-super-120b-a12b",
+        model="nvidia/llama-3.1-nemotron-nano-8b-v1",
         messages=[{"role": "user", "content": EXTRACT_PROMPT.format(text=text[:6000])}],
         stream=False,
         max_tokens=600,
@@ -245,7 +245,7 @@ def _call_llm(text: str) -> dict:
 def _llm_extract(prompt_template: str, text: str) -> dict:
     client = OpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=NVIDIA_KEY, timeout=30.0)
     resp = client.chat.completions.create(
-        model="nvidia/nemotron-3-super-120b-a12b",
+        model="nvidia/llama-3.1-nemotron-nano-8b-v1",
         messages=[{"role": "user", "content": prompt_template.format(text=text)}],
         stream=False,
         max_tokens=3000,
