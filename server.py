@@ -446,11 +446,28 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
             loop.run_in_executor(None, _run_synthesis, prompt),
             timeout=200.0,
         )
+        # Try extracting verdict from text first
         upper = full_text.upper()
         for v in ("PURSUE", "WATCHLIST", "PASS"):
             if v in upper:
                 verdict = v
                 break
+        # Nemotron often omits the verdict section — fallback: fast nano-8b call
+        if verdict == "UNKNOWN" and full_text:
+            try:
+                _vc = OpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=NVIDIA_KEY, timeout=15.0)
+                _vr = _vc.chat.completions.create(
+                    model="nvidia/llama-3.1-nemotron-nano-8b-v1",
+                    messages=[{"role": "user", "content": f"Based on this real estate analysis, reply with exactly one word — PURSUE, WATCHLIST, or PASS:\n\n{full_text[:2000]}"}],
+                    max_tokens=5,
+                    temperature=0,
+                    stream=False,
+                )
+                word = (_vr.choices[0].message.content or "").strip().upper().split()[0]
+                if word in ("PURSUE", "WATCHLIST", "PASS"):
+                    verdict = word
+            except Exception:
+                pass
     except asyncio.TimeoutError:
         log.error("  ✗ synthesis timed out after 120s")
         full_text = "\n\n[Analysis timed out — Nemotron did not respond within 120s]"
