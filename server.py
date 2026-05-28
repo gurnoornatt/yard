@@ -114,7 +114,7 @@ async def call_skill_async(name: str, params: dict) -> dict:
             "data": None,
         }
     # Run blocking skill in thread pool so it doesn't stall the event loop
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, call_skill, name, params)
 
 
@@ -267,7 +267,8 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
         ) as f:
             f.write(pdf_bytes)
             tmp_path = f.name
-        result = call_skill("parse_om", {"pdf_path": tmp_path})
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(None, call_skill, "parse_om", {"pdf_path": tmp_path})
         Path(tmp_path).unlink(missing_ok=True)
         if result.get("status") == "ok" and result.get("data"):
             ctx = dict(result["data"])
@@ -399,33 +400,38 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
     full_text = ""
     verdict = "UNKNOWN"
 
-    try:
-        client = OpenAI(
-            base_url="https://integrate.api.nvidia.com/v1",
-            api_key=NVIDIA_KEY,
-        )
+    def _run_synthesis(p: str) -> str:
+        client = OpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=NVIDIA_KEY)
         stream = client.chat.completions.create(
             model="nvidia/nemotron-3-super-120b-a12b",
-            messages=[{"role": "user", "content": prompt}],
+            messages=[{"role": "user", "content": p}],
             stream=True,
             max_tokens=1500,
         )
+        text = ""
         for chunk in stream:
-            if not chunk.choices:
-                continue
-            delta = chunk.choices[0].delta.content or ""
-            full_text += delta
-            yield sse("synthesis_chunk", {"text": delta})
-            await asyncio.sleep(0)
+            if chunk.choices:
+                text += chunk.choices[0].delta.content or ""
+        return text
 
+    try:
+        loop = asyncio.get_running_loop()
+        full_text = await asyncio.wait_for(
+            loop.run_in_executor(None, _run_synthesis, prompt),
+            timeout=120.0,
+        )
         for v in ("PURSUE", "WATCHLIST", "PASS"):
             if v in full_text:
                 verdict = v
                 break
-
+    except asyncio.TimeoutError:
+        log.error("  ✗ synthesis timed out after 120s")
+        full_text = "\n\n[Analysis timed out — Nemotron did not respond within 120s]"
     except Exception as e:
         log.error("  ✗ synthesis EXCEPTION: %s", e)
-        yield sse("synthesis_chunk", {"text": f"\n\n[Synthesis error: {e}]"})
+        full_text = f"\n\n[Synthesis error: {e}]"
+
+    yield sse("synthesis_chunk", {"text": full_text})
 
     total = round(time.time() - pipeline_start, 1)
     log.info(
