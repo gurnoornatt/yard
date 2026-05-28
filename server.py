@@ -37,7 +37,7 @@ app.add_middleware(
 
 PROJECT = Path(__file__).parent
 SKILLS = PROJECT / "skills"
-NVIDIA_KEY = os.environ.get("NVIDIA_API_KEY", "")
+OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 
 SKILL_SEQUENCE = [
     "parse_om",
@@ -411,11 +411,11 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
 
     try:
         client = OpenAI(
-            base_url="https://integrate.api.nvidia.com/v1",
-            api_key=NVIDIA_KEY,
+            base_url="https://openrouter.ai/api/v1",
+            api_key=OPENROUTER_KEY,
         )
         stream = client.chat.completions.create(
-            model="nvidia/nemotron-3-super-120b-a12b",
+            model="openai/gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             stream=True,
             max_tokens=8000,
@@ -859,11 +859,6 @@ async def admin_dashboard():
 </body>
 </html>"""
     return HTMLResponse(content=html)
-
-
-@app.get("/health")
-def health():
-    return {"status": "ok", "model": "nvidia/nemotron-3-super-120b-a12b"}
 
 
 ui_dist = PROJECT / "ui" / "dist"
