@@ -4,6 +4,7 @@ import { Upload } from 'lucide-react'
 import type { AnalysisState } from '../types'
 import { SKILL_ORDER } from '../App'
 import { ResultsPanel } from './ResultsPanel'
+import { API_BASE } from '../api'
 
 // ── Virtual canvas dimensions ─────────────────────────────────────────────────
 // Root and verdict are centered vertically; doc/reasoning nodes fill rows 0-9.
@@ -260,7 +261,7 @@ export function IngestionView({ state, file, onFile, onBack }: {
   const handleExport = useCallback(() => {
     const allData: Record<string, unknown> = {}
     Object.entries(state.skills).forEach(([name, sk]) => { allData[name] = sk.data ?? null })
-    fetch('/export', {
+    fetch(`${API_BASE}/export`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ synthesis_text: state.synthesisText, verdict: state.verdict ?? 'UNKNOWN', all_data: allData }),

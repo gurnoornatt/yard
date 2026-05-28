@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react'
 import { IngestionView } from './components/IngestionView'
 import type { AnalysisState, Verdict } from './types'
+import { API_BASE } from './api'
 
 export const SKILL_ORDER = [
   'parse_om', 'owner_lookup', 'deed_lookup', 'portfolio_crawler',
@@ -53,7 +54,7 @@ export default function App() {
 
     try {
       setState(s => ({ ...s, phase: 'uploading' }))
-      const res = await fetch('/analyze', { method: 'POST', body: form, signal: ctrl.signal })
+      const res = await fetch(`${API_BASE}/analyze`, { method: 'POST', body: form, signal: ctrl.signal })
       if (!res.ok) throw new Error(`Server ${res.status}`)
       if (!res.body) throw new Error('No body')
       setState(s => ({ ...s, phase: 'analyzing' }))
