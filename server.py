@@ -420,9 +420,12 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
         client = OpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=NVIDIA_KEY)
         stream = client.chat.completions.create(
             model="nvidia/nemotron-3-super-120b-a12b",
-            messages=[{"role": "user", "content": p}],
+            messages=[
+                {"role": "system", "content": "You are a concise real estate analyst. Write ONLY the requested sections. No internal notes, no reasoning, no meta-commentary. Go directly to the output."},
+                {"role": "user", "content": p},
+            ],
             stream=True,
-            max_tokens=1500,
+            max_tokens=3000,
         )
         text = ""
         for chunk in stream:
@@ -439,7 +442,7 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
         loop = asyncio.get_running_loop()
         full_text = await asyncio.wait_for(
             loop.run_in_executor(None, _run_synthesis, prompt),
-            timeout=150.0,
+            timeout=200.0,
         )
         for v in ("PURSUE", "WATCHLIST", "PASS"):
             if v in full_text:
