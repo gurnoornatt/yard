@@ -158,9 +158,7 @@ Research data:
 Write exactly these 7 sections (START with ## Bottom-Line Recommendation):
 
 ## Bottom-Line Recommendation
-Start with exactly one of: PURSUE / WATCHLIST / PASS
-Then 3-5 sentences of reasoning tied to specific signals from the data.
-End with: Next move: [one concrete action].
+First word: PURSUE, WATCHLIST, or PASS. Then 2 sentences max. End: Next move: [one action].
 
 ## Property Snapshot
 [address, property type, units, year built, asking price, appraised value — each with source tag]
@@ -448,8 +446,9 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
             loop.run_in_executor(None, _run_synthesis, prompt),
             timeout=200.0,
         )
+        upper = full_text.upper()
         for v in ("PURSUE", "WATCHLIST", "PASS"):
-            if v in full_text:
+            if v in upper:
                 verdict = v
                 break
     except asyncio.TimeoutError:
