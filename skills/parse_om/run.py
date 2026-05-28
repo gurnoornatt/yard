@@ -7,7 +7,7 @@ from pathlib import Path
 import pdfplumber
 from openai import OpenAI
 
-OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+NVIDIA_KEY = os.environ.get("NVIDIA_API_KEY", "")
 
 EXTRACT_PROMPT = """You are a data extraction API. Output ONLY a JSON object. No thinking, no explanation, no preamble.
 
@@ -230,9 +230,9 @@ def _extract_json(raw: str) -> dict:
 
 
 def _call_llm(text: str) -> dict:
-    client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=OPENROUTER_KEY)
+    client = OpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=NVIDIA_KEY)
     resp = client.chat.completions.create(
-        model="openai/gpt-4o-mini",
+        model="nvidia/nemotron-3-super-120b-a12b",
         messages=[{"role": "user", "content": EXTRACT_PROMPT.format(text=text[:6000])}],
         stream=False,
         max_tokens=600,
@@ -243,9 +243,9 @@ def _call_llm(text: str) -> dict:
 
 
 def _llm_extract(prompt_template: str, text: str) -> dict:
-    client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=OPENROUTER_KEY)
+    client = OpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=NVIDIA_KEY)
     resp = client.chat.completions.create(
-        model="openai/gpt-4o-mini",
+        model="nvidia/nemotron-3-super-120b-a12b",
         messages=[{"role": "user", "content": prompt_template.format(text=text)}],
         stream=False,
         max_tokens=3000,
