@@ -1,0 +1,15 @@
+.venv/
+.env
+.git/
+.claude/
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+ui/node_modules/
+ui/dist/
+landing/node_modules/
+OM/
+models/
+demo_oms/
+docs/
