@@ -565,6 +565,7 @@ async def health_check():
 
     # --- API keys (presence only — no live calls to avoid costs) ---
     key_checks = {
+        "NVIDIA_API_KEY": {"fix": "Get from build.nvidia.com — required for parse_om and synthesis"},
         "OPENROUTER_API_KEY": {"fix": "Get from openrouter.ai"},
         "ATTOM_API_KEY": {"fix": "Get from api.gateway.attomdata.com"},
         "RESEND_API_KEY": {"fix": "Get from resend.com"},
