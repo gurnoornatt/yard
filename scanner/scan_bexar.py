@@ -21,6 +21,7 @@ import logging
 import os
 import re
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -59,6 +60,29 @@ BEXAR_ZIPS = [
 ]
 
 
+class _RateLimiter:
+    """Token-bucket rate limiter. Thread-safe, shared across all workers."""
+    def __init__(self, max_per_minute: int):
+        self._lock = threading.Lock()
+        self._calls: list[float] = []
+        self._max = max_per_minute
+
+    def acquire(self) -> None:
+        with self._lock:
+            now = time.time()
+            self._calls = [t for t in self._calls if now - t < 60]
+            if len(self._calls) >= self._max:
+                sleep_for = 60 - (now - self._calls[0]) + 0.05
+                time.sleep(sleep_for)
+                now = time.time()
+                self._calls = [t for t in self._calls if now - t < 60]
+            self._calls.append(now)
+
+
+# Stay well under ATTOM's 150 req/min limit — leaves headroom for /analyze calls
+_attom_limiter = _RateLimiter(max_per_minute=100)
+
+
 def _attom_headers() -> dict:
     return {"APIKey": ATTOM_KEY, "Accept": "application/json"}
 
@@ -69,6 +93,7 @@ def _fetch_zip_multifamily(zip_code: str) -> list[dict]:
     page = 1
     while True:
         try:
+            _attom_limiter.acquire()
             r = httpx.get(
                 f"{ATTOM_BASE}/assessment/snapshot",
                 params={
@@ -103,7 +128,7 @@ def fetch_all_multifamily() -> list[dict]:
     """
     all_results: list[dict] = []
     seen_ids: set[str] = set()
-    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
         futures = {ex.submit(_fetch_zip_multifamily, z): z for z in BEXAR_ZIPS}
         for future in concurrent.futures.as_completed(futures):
             z = futures[future]
@@ -130,6 +155,7 @@ def _parse_state_from_address(mailing: str) -> str:
 
 def _fetch_one_expanded(aid: str) -> tuple[str, dict]:
     try:
+        _attom_limiter.acquire()
         r = httpx.get(
             f"{ATTOM_BASE}/property/expandedprofile",
             params={"attomId": aid},
