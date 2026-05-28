@@ -316,7 +316,7 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
     PARALLEL_SKILLS = [
         "deed_lookup", "portfolio_crawler", "permit_lookup",
         "tax_lookup", "violations_lookup", "comps_lookup",
-        "underwrite", "maturity_estimator", "synthesize_analysis",
+        "underwrite", "synthesize_analysis",
     ]
     for name in PARALLEL_SKILLS:
         yield sse("skill_start", {"skill": name, "label": SKILL_LABELS[name]})
@@ -347,6 +347,22 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
         else:
             yield sse("skill_complete", {"skill": name, "status": status, "data": result.get("data"), "property_id": property_id})
         await asyncio.sleep(0)
+
+    # ── WAVE 4: maturity_estimator — needs deed_maturity_date from wave 3 ────────
+    yield sse("skill_start", {"skill": "maturity_estimator", "label": SKILL_LABELS["maturity_estimator"]})
+    await asyncio.sleep(0)
+    t0 = time.time()
+    try:
+        result = await call_skill_async("maturity_estimator", ctx)
+        status = result.get("status", "ok")
+        elapsed = round(time.time() - t0, 2)
+        log.info("  ✓ maturity_estimator [%s] %.2fs", status, elapsed)
+        all_data["maturity_estimator"] = result.get("data")
+        skill_log.append({"skill": "maturity_estimator", "status": status, "elapsed_s": elapsed, "has_data": all_data["maturity_estimator"] is not None})
+        yield sse("skill_complete", {"skill": "maturity_estimator", "status": status, "data": result.get("data"), "property_id": property_id})
+    except Exception as e:
+        log.error("  ✗ maturity_estimator EXCEPTION: %s", e)
+        yield sse("skill_error", {"skill": "maturity_estimator", "error": str(e)})
 
     # Build research summary for synthesis
     research_keys = [

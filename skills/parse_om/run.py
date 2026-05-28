@@ -134,6 +134,8 @@ def _extract_json(raw: str) -> dict:
     raw = re.sub(r"^```(?:json)?\s*", "", raw)
     raw = re.sub(r"\s*```$", "", raw)
     raw = raw.strip()
+    # nano-8b outputs American number formatting (1,234,567) which is invalid JSON
+    raw = re.sub(r"(\d),(\d{3})(?=[,\s\n\r}\"'\]])", r"\1\2", raw)
 
     try:
         return json.loads(raw)
