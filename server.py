@@ -139,7 +139,9 @@ QUALITY_SKILLS = [
     "maturity_estimator",
 ]
 
-SYNTHESIS_PROMPT = """You are Sentinel, an autonomous real estate acquisition analyst. Output ONLY the 7 sections below — no preamble, no thinking, no meta-commentary. Begin immediately with "## Property Snapshot".
+SYNTHESIS_PROMPT = """You are Sentinel, an autonomous real estate acquisition analyst. Output ONLY the 7 sections below — no preamble, no thinking, no meta-commentary.
+
+CRITICAL: Write ## Bottom-Line Recommendation FIRST, then the remaining 6 sections.
 
 Using ONLY the research data below, write a concise 7-section analysis.
 Each section: 2-4 sentences. Direct, factual, cite specific numbers. No marketing language.
@@ -153,7 +155,12 @@ IMPORTANT — Source tagging: every number you cite must be followed by its sour
 Research data:
 {research_json}
 
-Write exactly these 7 sections (start NOW with ## Property Snapshot):
+Write exactly these 7 sections (START with ## Bottom-Line Recommendation):
+
+## Bottom-Line Recommendation
+Start with exactly one of: PURSUE / WATCHLIST / PASS
+Then 3-5 sentences of reasoning tied to specific signals from the data.
+End with: Next move: [one concrete action].
 
 ## Property Snapshot
 [address, property type, units, year built, asking price, appraised value — each with source tag]
@@ -173,11 +180,6 @@ If loan_distress_signals or loan_assignments are present in the data, describe t
 
 ## Hidden Flags
 [tax delinquency with dollar amount, open code violations with types — or: No hidden flags detected in public records.]
-
-## Bottom-Line Recommendation
-Start with exactly one of: PURSUE / WATCHLIST / PASS
-Then 3-5 sentences of reasoning tied to specific signals from the data.
-End with: Next move: [one concrete action].
 """
 
 
@@ -432,10 +434,12 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
             if chunk.choices:
                 text += chunk.choices[0].delta.content or ""
         # Nemotron 120B outputs a chain-of-thought preamble before the actual report.
-        # Strip everything before the first section header.
-        idx = text.find("## Property Snapshot")
-        if idx > 0:
-            text = text[idx:]
+        # Verdict is now first section, so strip up to ## Bottom-Line or ## Property Snapshot.
+        for header in ("## Bottom-Line", "## Property Snapshot"):
+            idx = text.find(header)
+            if idx > 0:
+                text = text[idx:]
+                break
         return text.strip()
 
     try:
