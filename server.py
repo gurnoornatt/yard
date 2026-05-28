@@ -418,7 +418,7 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
         loop = asyncio.get_running_loop()
         full_text = await asyncio.wait_for(
             loop.run_in_executor(None, _run_synthesis, prompt),
-            timeout=120.0,
+            timeout=150.0,
         )
         for v in ("PURSUE", "WATCHLIST", "PASS"):
             if v in full_text:
