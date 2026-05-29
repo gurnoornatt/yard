@@ -183,12 +183,15 @@ export function ResultsPanel({
       : `${monthsRem} months to maturity${pressure ? ` · ${pressure} pressure` : ''}`
     : null
 
-  // Tax
-  const taxDelinq  = Boolean(tax.delinquent)
+  // Tax — delinquent is null (BCAD appraisal district, not tax collector)
+  const taxDelinq  = tax.delinquent === true
   const taxDue     = fmtM(tax.total_due)
+  const taxAnnual  = tax.estimated_annual_tax ? String(tax.estimated_annual_tax) : null
   const taxVal     = taxDelinq
     ? `Delinquent${taxDue ? ` · ${taxDue} owed` : ''}`
-    : 'Current — no delinquencies'
+    : taxAnnual
+      ? `${taxAnnual}/yr est. tax`
+      : 'No delinquencies reported'
 
   // Violations
   const violCount  = (viols.open_count as number | undefined) ?? 0

@@ -148,7 +148,7 @@ RULES — obey exactly:
 2. Your FIRST word after that header must be PURSUE, WATCHLIST, or PASS.
 3. Write ONLY the 7 sections listed below. No preamble. No thinking. No meta-commentary. No reasoning steps.
 4. If any field is null or unavailable: write `data_unavailable (from [source])` — do NOT explain or reason about why it is missing.
-5. Every number cited must be followed by its source tag: (from OM), (calculated from OM), (from HUD SAFMR), (from Census ACS), (from ATTOM), (from BCAD).
+5. Every number cited must be followed by its source tag. Use ONLY these: (from OM), (calculated from OM), (from HUD SAFMR), (from Census ACS), (from ATTOM), (from BCAD), (from deed_lookup), (from tax_lookup). deed_lookup data = Bexar County Clerk, NOT BCAD. tax_lookup data = BCAD. Do not mix them up.
 6. Each section: 2-4 sentences. Direct and factual. No marketing language.
 
 {asset_class_note}
@@ -174,7 +174,7 @@ First word: PURSUE, WATCHLIST, or PASS. Then 2 sentences max. End: Next move: [o
 If loan_distress_signals or loan_assignments are present in the data, describe the assignment chain and what it suggests about the borrower's situation — multiple loan assignments in a short period indicate special servicing and likely forced sale pressure.]
 
 ## Financial Underwrite
-[NOI estimate with source, cap rate at ask if available, price per unit if available, value-add payback math if available. Then: for each bedroom type, show in-place rent vs HUD SAFMR vs Census median and the discount-to-market percentage. If underwrite data is null, state that financial section was not found in the OM.]
+[NOI estimate with source, cap rate at ask if available, price per unit if available, value-add payback math if available. Then: for each bedroom type in the unit_mix, show in_place_rent (this is MONTHLY per-unit rent in dollars, e.g. $1,200/mo) vs Census median rent and the discount-to-market percentage. Do NOT use annual revenue figures here. If underwrite data is null, state that financial section was not found in the OM.]
 
 ## Submarket Reality Check
 [nearby comparable multifamily sales with prices, market rent level, vacancy rate, trend]
