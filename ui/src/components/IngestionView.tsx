@@ -68,10 +68,10 @@ function finding(skill: string, data: Record<string, unknown>): string | null {
       const mat    = data.maturity_date ? 'matures ' + String(data.maturity_date) : null
       return [lender, amt, mat].filter(Boolean).join(' · ') || 'No deed data'
     }
-    case 'tax_lookup':
-      return data.delinquent
-        ? 'Delinquent · ' + String(data.total_due ?? 'amount unknown') + ' owed'
-        : 'Taxes current'
+    case 'tax_lookup': {
+      const tax = data.estimated_annual_tax as string | undefined
+      return tax ? tax + '/yr est. tax' : 'Tax data unavailable'
+    }
     case 'violations_lookup': {
       const n = (data.open_count as number) ?? 0
       return n > 0 ? n + ' open violation' + (n > 1 ? 's' : '') : 'No open violations'

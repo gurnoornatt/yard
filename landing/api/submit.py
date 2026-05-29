@@ -51,6 +51,7 @@ def _send_email(email: str) -> None:
         return
 
     import resend as _resend
+
     _resend.api_key = RESEND_API_KEY
 
     params: dict = {
@@ -87,7 +88,11 @@ def _slack_alert(email: str, firm: str, submarket: str) -> None:
         lines.append(f"*Firm:* {firm}")
     if submarket:
         lines.append(f"*Submarket:* {submarket}")
-    _post(SLACK_WEBHOOK_URL, {"text": "\n".join(lines)}, {"Content-Type": "application/json"})
+    _post(
+        SLACK_WEBHOOK_URL,
+        {"text": "\n".join(lines)},
+        {"Content-Type": "application/json"},
+    )
 
 
 def _handle(body: bytes) -> None:

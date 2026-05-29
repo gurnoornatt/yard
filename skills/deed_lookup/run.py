@@ -6,10 +6,8 @@ import sys
 from datetime import date
 from urllib.parse import quote_plus
 
-from stagehand import AsyncStagehand
+from skills._stagehand import make_client, session_kwargs
 
-BB_KEY = os.environ.get("BROWSERBASE_API_KEY", "")
-MODEL_KEY = os.environ.get("MODEL_API_KEY", "")
 MODEL = "openai/gpt-4o-mini"
 
 
@@ -88,9 +86,10 @@ def _results_url(address: str) -> str:
 
 async def _navigate_and_wait(session, url: str, debug: list) -> None:
     # bexar.tx.publicsearch.us fires continuous analytics so networkidle never
-    # resolves — navigate then sleep to let the React XHR finish
+    # resolves — navigate then sleep to let the React XHR finish.
+    # 8s: more reliable than 5s, especially when running concurrently with other skills.
     await session.navigate(url=url)
-    await asyncio.sleep(5)
+    await asyncio.sleep(8)
     debug.append(f"navigated+sleep: {url[:80]}")
 
 
@@ -103,21 +102,26 @@ async def _scrape(address: str) -> dict:
     url = _results_url(address)
     debug: list[str] = []
 
-    async with AsyncStagehand(
-        browserbase_api_key=BB_KEY,
-        model_api_key=MODEL_KEY,
-    ) as client:
-        session = await client.sessions.start(model_name=MODEL)
+    async with make_client() as client:
+        session = await client.sessions.start(**session_kwargs(MODEL))
         try:
             await _navigate_and_wait(session, url, debug)
 
             # Get raw accessibility tree — no LLM, just the page text.
             # Counts are mechanical tasks; regex is more reliable than gpt-4o-mini schema calls.
-            resp_raw = await session.extract()
+            # Retry once if page returns 0 cells (XHR not finished yet).
             page_text = ""
-            if resp_raw and resp_raw.data and resp_raw.data.result:
-                r = resp_raw.data.result
-                page_text = r.get("pageText", "") if isinstance(r, dict) else str(r)
+            for attempt in range(2):
+                resp_raw = await session.extract()
+                if resp_raw and resp_raw.data and resp_raw.data.result:
+                    r = resp_raw.data.result
+                    page_text = r.get("pageText", "") if isinstance(r, dict) else str(r)
+                cell_values_check = re.findall(r"cell: ([^\n\\]+)", page_text)
+                if cell_values_check:
+                    break
+                if attempt == 0:
+                    debug.append("0 cells on first extract — waiting 5s and retrying")
+                    await asyncio.sleep(5)
             debug.append(f"page_text_length: {len(page_text)}")
 
             # Extract all cell values in order: each row is checkbox, menu, status,

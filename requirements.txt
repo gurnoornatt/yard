@@ -4,8 +4,11 @@ annotated-doc==0.0.4
     # via fastapi
 annotated-types==0.7.0
     # via pydantic
+anthropic==0.105.2
+    # via sentinel (pyproject.toml)
 anyio==4.13.0
     # via
+    #   anthropic
     #   httpx
     #   openai
     #   stagehand
@@ -35,12 +38,19 @@ cssselect2==0.9.0
     # via weasyprint
 distro==1.9.0
     # via
+    #   anthropic
     #   openai
     #   stagehand
+docstring-parser==0.18.0
+    # via anthropic
+eval-type-backport==0.3.1
+    # via mistralai
 fastapi==0.136.3
     # via sentinel (pyproject.toml)
 fonttools==4.63.0
     # via weasyprint
+greenlet==3.5.1
+    # via playwright
 h11==0.16.0
     # via
     #   httpcore
@@ -50,6 +60,8 @@ httpcore==1.0.9
 httpx==0.28.1
     # via
     #   sentinel (pyproject.toml)
+    #   anthropic
+    #   mistralai
     #   openai
     #   stagehand
 idna==3.16
@@ -57,16 +69,30 @@ idna==3.16
     #   anyio
     #   httpx
     #   requests
+importlib-metadata==8.7.1
+    # via opentelemetry-api
 jinja2==3.1.6
     # via sentinel (pyproject.toml)
 jiter==0.15.0
-    # via openai
+    # via
+    #   anthropic
+    #   openai
+jsonpath-python==1.1.6
+    # via mistralai
 lxml==6.1.1
     # via sentinel (pyproject.toml)
 markupsafe==3.0.3
     # via jinja2
+mistralai==2.4.8
+    # via sentinel (pyproject.toml)
 openai==2.38.0
     # via sentinel (pyproject.toml)
+opentelemetry-api==1.39.1
+    # via
+    #   mistralai
+    #   opentelemetry-semantic-conventions
+opentelemetry-semantic-conventions==0.60b1
+    # via mistralai
 pdfminer-six==20251230
     # via pdfplumber
 pdfplumber==0.11.9
@@ -75,23 +101,31 @@ pillow==12.2.0
     # via
     #   pdfplumber
     #   weasyprint
+playwright==1.60.0
+    # via sentinel (pyproject.toml)
 pycparser==3.0
     # via cffi
 pydantic==2.13.4
     # via
+    #   anthropic
     #   fastapi
+    #   mistralai
     #   openai
     #   stagehand
 pydantic-core==2.46.4
     # via pydantic
 pydyf==0.12.1
     # via weasyprint
+pyee==13.0.1
+    # via playwright
 pypdf==6.12.2
     # via sentinel (pyproject.toml)
 pypdfium2==5.8.0
     # via pdfplumber
 pyphen==0.17.2
     # via weasyprint
+python-dateutil==2.9.0.post0
+    # via mistralai
 python-dotenv==1.2.2
     # via sentinel (pyproject.toml)
 python-multipart==0.0.29
@@ -102,8 +136,11 @@ resend==2.30.1
     # via sentinel (pyproject.toml)
 ruff==0.15.14
     # via sentinel (pyproject.toml)
+six==1.17.0
+    # via python-dateutil
 sniffio==1.3.1
     # via
+    #   anthropic
     #   openai
     #   stagehand
 soupsieve==2.8.4
@@ -122,12 +159,16 @@ tqdm==4.67.3
     # via openai
 typing-extensions==4.15.0
     # via
+    #   anthropic
     #   anyio
     #   beautifulsoup4
     #   fastapi
     #   openai
+    #   opentelemetry-api
+    #   opentelemetry-semantic-conventions
     #   pydantic
     #   pydantic-core
+    #   pyee
     #   resend
     #   stagehand
     #   starlette
@@ -135,6 +176,7 @@ typing-extensions==4.15.0
 typing-inspection==0.4.2
     # via
     #   fastapi
+    #   mistralai
     #   pydantic
 urllib3==2.7.0
     # via requests
@@ -149,5 +191,7 @@ webencodings==0.5.1
     #   cssselect2
     #   tinycss2
     #   tinyhtml5
+zipp==4.1.0
+    # via importlib-metadata
 zopfli==0.4.2
     # via fonttools

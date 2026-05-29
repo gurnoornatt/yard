@@ -38,6 +38,8 @@ app.add_middleware(
 PROJECT = Path(__file__).parent
 SKILLS = PROJECT / "skills"
 NVIDIA_KEY = os.environ.get("NVIDIA_API_KEY", "")
+OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+_OR_BASE = "https://openrouter.ai/api/v1"
 
 SKILL_SEQUENCE = [
     "parse_om",
@@ -139,18 +141,19 @@ QUALITY_SKILLS = [
     "maturity_estimator",
 ]
 
-SYNTHESIS_PROMPT = """You are Sentinel, an autonomous real estate acquisition analyst. Output ONLY the 7 sections below — no preamble, no thinking, no meta-commentary.
+SYNTHESIS_PROMPT = """You are Sentinel, an autonomous real estate acquisition analyst.
 
-CRITICAL: Write ## Bottom-Line Recommendation FIRST, then the remaining 6 sections.
-
-Using ONLY the research data below, write a concise 7-section analysis.
-Each section: 2-4 sentences. Direct, factual, cite specific numbers. No marketing language.
-If a data source shows "data_unavailable" or null, note it briefly and move on.
-
-IMPORTANT — Source tagging: every number you cite must be followed by its source in parentheses. Use exactly: (from OM), (calculated from OM), (from HUD SAFMR), (from Census ACS), (from ATTOM), (from BCAD). If a number has no source, do not cite it.
+RULES — obey exactly:
+1. Start your response with the line: ## Bottom-Line Recommendation
+2. Your FIRST word after that header must be PURSUE, WATCHLIST, or PASS.
+3. Write ONLY the 7 sections listed below. No preamble. No thinking. No meta-commentary. No reasoning steps.
+4. If any field is null or unavailable: write `data_unavailable (from [source])` — do NOT explain or reason about why it is missing.
+5. Every number cited must be followed by its source tag: (from OM), (calculated from OM), (from HUD SAFMR), (from Census ACS), (from ATTOM), (from BCAD).
+6. Each section: 2-4 sentences. Direct and factual. No marketing language.
 
 {asset_class_note}
 {coverage_note}
+{context_deals}
 
 Research data:
 {research_json}
@@ -189,6 +192,8 @@ async def _log_run(
     synthesis_chars: int,
     total_elapsed: float,
     pdf_filename: str = "",
+    all_data: dict | None = None,
+    ctx: dict | None = None,
 ):
     try:
         import httpx as _httpx
@@ -197,27 +202,114 @@ async def _log_run(
         supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
         if not supabase_url or not supabase_key:
             return
-        await _httpx.AsyncClient().post(
-            f"{supabase_url}/rest/v1/pipeline_runs",
-            headers={
-                "apikey": supabase_key,
-                "Authorization": f"Bearer {supabase_key}",
-                "Content-Type": "application/json",
-                "Prefer": "return=minimal",
-            },
-            json={
-                "type": "om_analysis",
-                "property_address": address,
-                "verdict": verdict,
-                "confidence": confidence,
-                "total_elapsed_s": total_elapsed,
-                "skill_results": skill_results,
-                "synthesis_chars": synthesis_chars,
-            },
-            timeout=5,
-        )
+
+        headers = {
+            "apikey": supabase_key,
+            "Authorization": f"Bearer {supabase_key}",
+            "Content-Type": "application/json",
+            "Prefer": "return=minimal",
+        }
+
+        async with _httpx.AsyncClient() as client:
+            # pipeline_runs (existing)
+            await client.post(
+                f"{supabase_url}/rest/v1/pipeline_runs",
+                headers=headers,
+                json={
+                    "type": "om_analysis",
+                    "property_address": address,
+                    "verdict": verdict,
+                    "confidence": confidence,
+                    "total_elapsed_s": total_elapsed,
+                    "skill_results": skill_results,
+                    "synthesis_chars": synthesis_chars,
+                },
+                timeout=5,
+            )
+
+            # om_analyses — institutional context graph (Stage 4)
+            if all_data and ctx:
+                # all_data["parse_om"] is already the data dict (server stores result.get("data"))
+                parse_data = all_data.get("parse_om") or {}
+                financials = parse_data.get("financials") or {}
+                deed = all_data.get("deed_lookup") or {}
+                tax = all_data.get("tax_lookup") or {}
+                violations = all_data.get("violations_lookup") or {}
+
+                has_liens = bool(deed.get("mechanics_liens"))
+                tax_delinquent = bool(tax.get("delinquent"))
+                open_violations = len(violations.get("violations") or [])
+
+                await client.post(
+                    f"{supabase_url}/rest/v1/om_analyses",
+                    headers=headers,
+                    json={
+                        "address": ctx.get("address"),
+                        "city": ctx.get("city"),
+                        "state": ctx.get("state"),
+                        "zip": ctx.get("zip"),
+                        "asset_class": ctx.get("asset_class"),
+                        "units": ctx.get("units"),
+                        "year_built": ctx.get("year_built"),
+                        "asking_price": ctx.get("asking_price"),
+                        "annual_in_place_revenue": financials.get("annual_in_place_revenue"),
+                        "annual_projected_revenue": financials.get("annual_projected_revenue"),
+                        "broker_cap_rate": financials.get("broker_cap_rate"),
+                        "offering_structure": financials.get("offering_structure"),
+                        "citations": parse_data.get("citations") or {},
+                        "has_liens": has_liens,
+                        "tax_delinquent": tax_delinquent,
+                        "open_violations": open_violations,
+                        "verdict": verdict,
+                        "confidence": confidence,
+                        "pdf_filename": pdf_filename,
+                    },
+                    timeout=5,
+                )
     except Exception:
         pass
+
+
+async def _get_context_deals(state: str, asset_class: str, current_address: str) -> str:
+    """Pull last 3 similar deals from om_analyses for institutional context."""
+    try:
+        import httpx as _httpx
+
+        supabase_url = os.environ.get("SUPABASE_URL", "")
+        supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+        if not supabase_url or not supabase_key:
+            return ""
+
+        async with _httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{supabase_url}/rest/v1/om_analyses",
+                headers={
+                    "apikey": supabase_key,
+                    "Authorization": f"Bearer {supabase_key}",
+                },
+                params={
+                    "state": f"eq.{state}",
+                    "asset_class": f"eq.{asset_class}",
+                    "address": f"neq.{current_address}",
+                    "order": "created_at.desc",
+                    "limit": "3",
+                    "select": "address,verdict,annual_in_place_revenue,has_liens,tax_delinquent,open_violations",
+                },
+                timeout=3,
+            )
+            deals = resp.json()
+            if not deals or not isinstance(deals, list):
+                return ""
+            lines = []
+            for d in deals:
+                rev = f"${d['annual_in_place_revenue']:,}" if d.get("annual_in_place_revenue") else "N/A"
+                lines.append(
+                    f"- {d['address']}: {d.get('verdict','?')} | revenue {rev} | "
+                    f"liens:{d.get('has_liens',False)} | tax_delinquent:{d.get('tax_delinquent',False)}"
+                )
+            return "Prior similar deals analyzed by this firm:\n" + "\n".join(lines)
+    except Exception:
+        return ""
 
 
 def _apply_deed_ctx(ctx: dict, data: dict) -> None:
@@ -404,10 +496,18 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
         else ""
     )
 
+    # Stage 4: pull institutional context (last 3 similar deals this firm analyzed)
+    context_deals = await _get_context_deals(
+        state=ctx.get("state", ""),
+        asset_class=ctx.get("asset_class", "multifamily"),
+        current_address=ctx.get("address", ""),
+    )
+
     prompt = SYNTHESIS_PROMPT.format(
         research_json=json.dumps(research_summary, indent=2),
         asset_class_note=asset_class_note,
         coverage_note=coverage_note,
+        context_deals=context_deals,
     )
 
     yield sse("synthesis_start", {"label": "Writing analysis..."})
@@ -417,28 +517,34 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
     verdict = "UNKNOWN"
 
     def _run_synthesis(p: str) -> str:
-        client = OpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=NVIDIA_KEY)
-        stream = client.chat.completions.create(
-            model="nvidia/nemotron-3-super-120b-a12b",
-            messages=[
-                {"role": "system", "content": "You are a concise real estate analyst. Write ONLY the requested sections. No internal notes, no reasoning, no meta-commentary. Go directly to the output."},
-                {"role": "user", "content": p},
-            ],
-            stream=True,
-            max_tokens=3000,
-        )
-        text = ""
-        for chunk in stream:
-            if chunk.choices:
-                text += chunk.choices[0].delta.content or ""
-        # Nemotron 120B outputs a chain-of-thought preamble before the actual report.
-        # Verdict is now first section, so strip up to ## Bottom-Line or ## Property Snapshot.
-        for header in ("## Bottom-Line", "## Property Snapshot"):
-            idx = text.find(header)
-            if idx > 0:
-                text = text[idx:]
-                break
-        return text.strip()
+        client = OpenAI(base_url=_OR_BASE, api_key=OPENROUTER_KEY, max_retries=0)
+        sys_msg = "You are a real estate analyst. Respond with ONLY the formatted sections requested. Your first line must be '## Bottom-Line Recommendation'. Your second line must start with PURSUE, WATCHLIST, or PASS. No thinking. No reasoning steps. No meta-commentary. No preamble."
+        msgs = [{"role": "system", "content": sys_msg}, {"role": "user", "content": p}]
+        # Fallback chain: different providers so rate limits don't stack
+        _models = [
+            "meta-llama/llama-3.3-70b-instruct:free",   # Venice
+            "google/gemma-4-31b-it:free",                # Google
+            "meta-llama/llama-3.2-3b-instruct:free",     # smaller, different provider
+        ]
+        last_err = None
+        for model in _models:
+            try:
+                stream = client.chat.completions.create(
+                    model=model, messages=msgs, stream=True,
+                    max_tokens=3000, temperature=0,
+                )
+                text = ""
+                for chunk in stream:
+                    if chunk.choices:
+                        text += chunk.choices[0].delta.content or ""
+                log.info("  synthesis model used: %s", model)
+                return text.strip()
+            except Exception as e:
+                if "429" in str(e) or "404" in str(e):
+                    last_err = e
+                    continue
+                raise
+        raise last_err
 
     try:
         loop = asyncio.get_running_loop()
@@ -446,18 +552,34 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
             loop.run_in_executor(None, _run_synthesis, prompt),
             timeout=200.0,
         )
+        # Strip preamble: find "## Bottom-Line Recommendation" immediately followed
+        # (within a line or two) by PURSUE/WATCHLIST/PASS — that's the real start.
+        import re as _re
+        real_start = _re.search(
+            r"## Bottom-Line Recommendation\s*\n\s*(PURSUE|WATCHLIST|PASS)",
+            full_text,
+        )
+        if real_start:
+            full_text = full_text[real_start.start():]
+        else:
+            # Fallback: any ## header that isn't at position 0
+            for header in ("## Bottom-Line", "## Property Snapshot"):
+                idx = full_text.find(header)
+                if idx > 0:
+                    full_text = full_text[idx:]
+                    break
         # Try extracting verdict from text first
         upper = full_text.upper()
         for v in ("PURSUE", "WATCHLIST", "PASS"):
             if v in upper:
                 verdict = v
                 break
-        # Nemotron often omits the verdict section — fallback: fast nano-8b call
+        # Fallback: fast free model via OpenRouter to extract verdict word
         if verdict == "UNKNOWN" and full_text:
             try:
-                _vc = OpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=NVIDIA_KEY, timeout=15.0)
+                _vc = OpenAI(base_url=_OR_BASE, api_key=OPENROUTER_KEY, timeout=15.0, max_retries=0)
                 _vr = _vc.chat.completions.create(
-                    model="nvidia/llama-3.1-nemotron-nano-8b-v1",
+                    model="meta-llama/llama-3.1-8b-instruct:free",
                     messages=[{"role": "user", "content": f"Based on this real estate analysis, reply with exactly one word — PURSUE, WATCHLIST, or PASS:\n\n{full_text[:2000]}"}],
                     max_tokens=5,
                     temperature=0,
@@ -469,8 +591,8 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
             except Exception:
                 pass
     except asyncio.TimeoutError:
-        log.error("  ✗ synthesis timed out after 120s")
-        full_text = "\n\n[Analysis timed out — Nemotron did not respond within 120s]"
+        log.error("  ✗ synthesis timed out after 200s")
+        full_text = "\n\n[Analysis timed out — model did not respond within 200s]"
     except Exception as e:
         log.error("  ✗ synthesis EXCEPTION: %s", e)
         full_text = f"\n\n[Synthesis error: {e}]"
@@ -506,6 +628,8 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
             synthesis_chars=len(full_text),
             total_elapsed=total,
             pdf_filename=filename,
+            all_data=all_data,
+            ctx=ctx,
         )
     )
     yield sse("done", {})

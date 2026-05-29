@@ -138,12 +138,23 @@ def eval_parse_om():
         for field in REQUIRED_FIELDS:
             check_field(field, data.get(field))
 
-        # Loan fields — report honestly whether present or null
-        loan_found = any(data.get(f) for f in LOAN_FIELDS)
+        # Citation check (Mistral path only — legacy path has no citations)
+        citations = data.get("citations", {})
+        cited_count = sum(1 for v in citations.values() if v and v != "not found")
+        if cited_count >= 3:
+            ok(f"citations: {cited_count} fields sourced")
+        elif cited_count > 0:
+            warn(f"citations: only {cited_count} fields sourced (want ≥3)")
+        else:
+            info("citations: none (legacy path or Mistral key not set)")
+
+        # Loan fields — check inside financials (where they actually live)
+        financials = data.get("financials", {})
+        loan_found = any(financials.get(f) for f in LOAN_FIELDS)
         if loan_found:
             present_loan += 1
             for f in LOAN_FIELDS:
-                check_field(f"loan/{f}", data.get(f), expect_null=(data.get(f) is None))
+                check_field(f"financials/{f}", financials.get(f), expect_null=(financials.get(f) is None))
         else:
             info(
                 "loan fields: all null (loan terms not found in this OM — this is normal)"

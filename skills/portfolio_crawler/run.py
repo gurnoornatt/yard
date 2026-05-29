@@ -4,10 +4,8 @@ import os
 import re
 import sys
 
-from stagehand import AsyncStagehand
+from skills._stagehand import make_client, session_kwargs
 
-BB_KEY = os.environ.get("BROWSERBASE_API_KEY", "")
-MODEL_KEY = os.environ.get("MODEL_API_KEY", "")
 BCAD_SEARCH = "https://bexar.trueautomation.com/clientdb/PropertySearch.aspx?cid=110"
 MODEL = "openai/gpt-4o-mini"
 
@@ -32,11 +30,8 @@ def _parse_portfolio_blob(blob: str) -> list[dict]:
 
 async def _scrape_portfolio(owner_name: str) -> dict:
     search_term = owner_name.split()[0]
-    async with AsyncStagehand(
-        browserbase_api_key=BB_KEY,
-        model_api_key=MODEL_KEY,
-    ) as client:
-        session = await client.sessions.start(model_name=MODEL)
+    async with make_client() as client:
+        session = await client.sessions.start(**session_kwargs(MODEL))
         try:
             await session.navigate(url=BCAD_SEARCH)
             await session.execute(
