@@ -88,6 +88,25 @@ def score_property(p: dict) -> ScoredProperty:
         ratio_pct = round(tax_amt / appraised * 100, 1)
         signals.append(f"High tax burden ({ratio_pct}% of assessed value)")
 
+    # --- Low improvement ratio (10 pts) — undercapitalized / deferred capex ---
+    # ArcGIS provides LandVal + ImprVal separately; low impr/total ratio signals neglect
+    land_val = _safe_float(p.get("assessment", {}).get("land", {}).get("landval"))
+    impr_val = _safe_float(p.get("assessment", {}).get("impr", {}).get("imprval"))
+    if land_val and impr_val and appraised and appraised > 0:
+        impr_ratio = impr_val / appraised
+        if impr_ratio < 0.40:
+            score += 10
+            signals.append(f"Low improvement ratio ({impr_ratio:.0%}) — possible deferred capex")
+
+    # --- Individual/small-op owner name (8 pts) ---
+    # LLC/LP = institutional (less motivated). Individual names or "INC" patterns signal
+    # smaller operators who may be more open to selling.
+    owner_name = str(p.get("owner", {}).get("ownerName", "") or "").upper()
+    institutional_markers = ("LLC", "LP", "FUND", "REIT", "TRUST", "CORP", "INC", "LTD")
+    if owner_name and not any(m in owner_name for m in institutional_markers):
+        score += 8
+        signals.append("Individual/small-op owner — less institutional")
+
     # --- Aging asset / capex pressure (up to 15 pts) ---
     year_built = _safe_int(p.get("summary", {}).get("yearbuilt"))
     if year_built:

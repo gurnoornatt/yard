@@ -4,10 +4,10 @@
 
 A real estate acquisitions intelligence product for multifamily buyers in San Antonio, TX. Two things:
 
-1. **On-demand OM analysis** — buyer uploads a PDF offering memorandum, pipeline runs in ~3-5 min, returns a structured 7-section analysis with PURSUE / WATCHLIST / PASS verdict and a downloadable PDF report
+1. **On-demand OM analysis** — buyer uploads a PDF offering memorandum, pipeline runs in ~60-90s, returns a structured 7-section analysis with PURSUE / WATCHLIST / PASS verdict
 2. **Monthly motivated seller scanner** — ATTOM bulk query of all Bexar County apartments, scores properties by seller pressure signals, emails ranked list to subscribers as a PDF
 
-The client never touches software. They email an OM or upload it at the web app. They get a PDF back.
+The client never touches software. They upload at the web app. They get a structured analysis back with sourced numbers.
 
 ---
 
@@ -16,13 +16,15 @@ The client never touches software. They email an OM or upload it at the web app.
 | Layer | Tech |
 |---|---|
 | Backend | FastAPI (`server.py`), Python 3.12, uv venv |
-| AI / LLM | OpenRouter (`OPENROUTER_API_KEY`) — Nemotron for synthesis and parse_om |
-| Browser automation | Browserbase + Stagehand — **only** `deed_lookup` and `tax_lookup` still use this |
+| OM parsing | Mistral OCR (`mistral-ocr-latest`) + document_annotation Pydantic schema — primary path |
+| LLM synthesis | OpenRouter — Llama 3.3 70B primary, Gemma 4 31B + Llama 3.2 3B fallbacks |
+| Browser automation | Browserbase (cloud, REST API) + Playwright CSS selectors — `tax_lookup` only. `deed_lookup` uses Stagehand. |
 | PDF generation | WeasyPrint + Jinja2 |
 | Email delivery | Resend (`noor@nidoandkey.com`) |
 | Database | Supabase (`nbbpykkxgrarlkuytare.supabase.co`) |
-| Landing page | Static HTML on Vercel (`nidoandkey.com`) |
-| Property data | ATTOM API (primary), Bexar County ArcGIS (fallback), Census ACS5, SA Open Data |
+| App | `app.nidoandkey.com` — Railway, deployed via Dockerfile |
+| Landing page | `nidoandkey.com` — static HTML on Vercel |
+| Property data | ATTOM API (scanner + owner_lookup), Census ACS5, SA Open Data, Bexar County Clerk, BCAD |
 
 ---
 
@@ -30,33 +32,38 @@ The client never touches software. They email an OM or upload it at the web app.
 
 ```
 server.py                  — FastAPI app. /analyze (SSE stream), /export (PDF), /health
+Dockerfile                 — Multi-stage: Bun builds UI → Python serves everything
+railway.json               — Railway deploy config
 scanner/
-  scan_bexar.py            — Monthly ATTOM scan. Run: python3 scanner/scan_bexar.py --dry-run
-  score.py                 — Motivation scoring logic (year-built, hold period, tax burden)
+  scan_bexar.py            — Monthly ATTOM scan. Run: .venv/bin/python3 scanner/scan_bexar.py --dry-run
+  score.py                 — Motivation scoring logic
 skills/
-  parse_om/run.py          — PDF extraction via LLM (OpenRouter/Nemotron)
-  owner_lookup/run.py      — Owner name + mailing address via ATTOM expandedprofile.
-                             Falls back to Bexar County ArcGIS. NO Browserbase.
-  tax_lookup/run.py        — BCAD tax delinquency via Stagehand (still uses Browserbase)
-  deed_lookup/run.py       — Bexar County Clerk lien/UCC records via Stagehand + regex.
-                             Finds mechanics liens and UCC lender filings by address.
-  comps_lookup/run.py      — Census + ATTOM comps
-  underwrite/run.py        — NOI/cap rate math
-  violations_lookup/run.py — SA Open Data code violations
-  permit_lookup/run.py     — Building permits
-  maturity_estimator/run.py— Loan maturity pressure estimate
-  synthesize_analysis/run.py — Pre-synthesis skill
+  _stagehand.py            — Shared Stagehand client factory (Browserbase or local Chrome)
+  parse_om/run.py          — Mistral OCR + Pydantic document_annotation. Returns 15 citations per OM.
+                             Falls back to pdfplumber+LLM if MISTRAL_API_KEY not set.
+  owner_lookup/run.py      — ATTOM expandedprofile API (~200ms, no browser). Falls back to Bexar ArcGIS.
+  tax_lookup/run.py        — BCAD via Browserbase REST API + Playwright CSS selectors. NO Stagehand AI.
+                             Returns estimated_annual_tax + total_tax_rate. Does NOT return delinquency
+                             (BCAD is appraisal district, not tax collector).
+  deed_lookup/run.py       — Bexar County Clerk via Stagehand + regex. Mechanics liens, UCC filings.
+  comps_lookup/run.py      — Census ACS5 market rents. ATTOM sale comps (often empty — TX non-disclosure).
+  underwrite/run.py        — NOI/cap rate math from OM data.
+  violations_lookup/run.py — SA Open Data code violations.
+  permit_lookup/run.py     — SA Open Data building permits.
+  maturity_estimator/run.py— Loan maturity pressure from deed origination date + 5yr estimate.
+  synthesize_analysis/run.py — Pre-synthesis eligibility check.
+  portfolio_crawler/run.py — Owner portfolio via BCAD owner name search (Stagehand). Often unavailable.
 reports/
-  generate.py              — WeasyPrint renderer. build_om_context() + render_pdf()
-  deliver.py               — Resend email delivery. send_monthly_report() + send_om_report()
+  generate.py              — WeasyPrint renderer.
+  deliver.py               — Resend email delivery.
   templates/
     om_analysis.html       — Single OM analysis PDF template
     monthly_report.html    — Monthly motivated seller list template
+ui/                        — React + Vite + Tailwind frontend. Built by Dockerfile into ui/dist/.
 landing/
   index.html               — Marketing site (nidoandkey.com)
   api/submit.py            — Vercel serverless: form → Resend email + Supabase log
-  assets/sample-memo.pdf   — Sample analysis PDF attached to form submissions
-start.sh                   — Start server with DYLD_LIBRARY_PATH set (required for WeasyPrint)
+start.sh                   — Start server with DYLD_LIBRARY_PATH set (required for WeasyPrint on macOS)
 scripts/
   eval.py                  — Skill evaluator. Run constantly. Never claim a skill works without it.
 ```
@@ -65,22 +72,22 @@ scripts/
 
 ## Environment Variables
 
-All in `.env` at root. Never commit this file.
+All in `.env` at root. Never commit this file. Also set all of these in Railway dashboard.
 
 ```
-OPENROUTER_API_KEY         — LLM (parse_om, synthesize_analysis)
-RESEND_API_KEY             — Email delivery
-BROWSERBASE_API_KEY        — Stagehand browser automation (deed_lookup, tax_lookup only)
+MISTRAL_API_KEY            — Mistral OCR for parse_om (primary path). Without this, falls back to pdfplumber.
+OPENROUTER_API_KEY         — LLM synthesis (Llama 3.3 70B + fallbacks)
+BROWSERBASE_API_KEY        — Browserbase cloud browser (tax_lookup, deed_lookup)
+BROWSERBASE_PROJECT_ID     — Required for Browserbase REST API session creation
 MODEL_API_KEY              — OpenAI key used by Stagehand sessions (gpt-4o-mini)
-ATTOM_API_KEY              — Property data: owner, lender, appraised value, bulk queries
+ATTOM_API_KEY              — owner_lookup + scanner bulk queries
 CENSUS_API_KEY             — ACS5 market rent benchmarks
 SUPABASE_SERVICE_ROLE_KEY  — Supabase admin access
 SUPABASE_URL               — https://nbbpykkxgrarlkuytare.supabase.co
-HUD_API_TOKEN              — HUD SAFMR fair market rents (optional, comps_lookup)
+RESEND_API_KEY             — Email delivery
+HUD_API_TOKEN              — HUD SAFMR fair market rents (optional)
+NVIDIA_API_KEY             — Legacy, unused in current synthesis path
 ```
-
-Vercel env vars (set via `vercel env add` or dashboard):
-- `RESEND_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
 
 ---
 
@@ -88,195 +95,175 @@ Vercel env vars (set via `vercel env add` or dashboard):
 
 ```bash
 ./start.sh
-# NOT: python3 -m uvicorn server:app
-# WeasyPrint needs DYLD_LIBRARY_PATH=/opt/homebrew/lib on macOS or PDF export silently fails
+# Sets DYLD_LIBRARY_PATH=/opt/homebrew/lib (WeasyPrint needs this on macOS)
+# Then launches uvicorn on :8000
 ```
 
 **Always use `.venv/bin/python3`, never `python3`.** System Python is 3.9 and missing all deps.
 
-Server runs at `http://localhost:8000`. UI at `/`, health at `/health`.
+Server at `http://localhost:8000`. UI at `/`, health at `/health`.
 
 ---
 
-## Running Evals — Do This First Every Session
+## Running Evals
 
 ```bash
 .venv/bin/python3 scripts/eval.py              # all skills
-.venv/bin/python3 scripts/eval.py owner_lookup # just owner_lookup
+.venv/bin/python3 scripts/eval.py parse_om     # just parse_om
 .venv/bin/python3 scripts/eval.py deed_lookup  # just deed_lookup
 ```
 
-Never claim a skill "works" without a passing eval. We burned 2+ sessions on this.
+Never claim a skill "works" without a passing eval.
 
 ---
 
-## How to Run the Scanner
-
-```bash
-# Dry run (score only, no pipeline, no PDF)
-.venv/bin/python3 scanner/scan_bexar.py --dry-run
-
-# Full run, top 5, save PDF, no email
-.venv/bin/python3 scanner/scan_bexar.py --top 5 --no-email --output /tmp/test.pdf
-
-# Production run (emails all active subscribers)
-.venv/bin/python3 scanner/scan_bexar.py --top 20
-```
-
-ATTOM query: `assessment/snapshot` with `geoid=CO48029` (Bexar County FIPS). Returns ~1,500 apartment properties.
-
----
-
-## Supabase Tables
-
-- `pipeline_runs` — logs every OM analysis and scanner run (type, verdict, elapsed, skill results)
-- `subscribers` — email list for monthly scanner report (email, active bool)
-- `contacts` — landing page form submissions
-
----
-
-## What's Verified Working (Current State)
+## What's Working (Current State — May 2026)
 
 | Skill | Status | Notes |
 |---|---|---|
-| `parse_om` | Working | Extracts address, units, year_built, asking_price from 9 OMs. Loan fields always null — normal, OMs don't have them. |
-| `owner_lookup` | Working, 2/2 eval | ATTOM API primary (~200ms, structured JSON). ArcGIS fallback. Returns: owner_name, owner_address, owner_state, out_of_state, absentee_owner, corporate_owner, appraised_value, attom_lender, attom_loan_amount, attom_loan_date. No Browserbase. |
-| `deed_lookup` | Working, 3/4 eval | Bexar County Clerk via Stagehand + regex. Finds mechanics liens and UCC lender filings by property address. NOT full TX — Bexar County only. |
-| `tax_lookup` | Working | BCAD Stagehand. Checks tax delinquency. |
-| `comps_lookup` | Partial | Census ACS works. HUD ZIP rents need token verification. |
-| `underwrite` | Working | NOI/cap rate math from OM data. |
-| `violations_lookup` | Working | SA Open Data. |
-| `/export` endpoint | Working | POST /export → WeasyPrint PDF → optional Resend email. |
-| PDF template | Working | Shows ATTOM lender, loan amount, appraised value, absentee flag, mechanics liens, distress signals. |
-| "Get the Full Memo" button | Working | In IngestionView.tsx, calls /export, downloads PDF. |
-| Email delivery (Resend) | Code done | **Needs verified sender domain in Resend dashboard before use.** |
-| Scanner (scan_bexar.py) | Built, not run live | Code exists, needs first run against real ATTOM data. |
-| Landing page | Live | nidoandkey.com on Vercel. |
+| `parse_om` | **Working** | Mistral OCR path: 15 citations per OM, handles scanned PDFs, no hallucinated loan data. Loan fields always null — normal, OMs don't contain loan terms. Falls back to pdfplumber if no MISTRAL_API_KEY. |
+| `deed_lookup` | **Working** | Bexar County Clerk via Stagehand + regex. 11 mechanics liens confirmed on Rio 1604 via session replay. Finds distress signals reliably. |
+| `tax_lookup` | **Working** | Rewrote from Stagehand AI to Browserbase REST API + Playwright CSS selectors. No AI in form filling. Returns `estimated_annual_tax` and `total_tax_rate` from BCAD. Does NOT return delinquency — BCAD is the appraisal district, not tax collector. |
+| `owner_lookup` | Error | ATTOM expandedprofile returns 504 for SA properties. Pre-existing. Falls back to ArcGIS but that also fails. Needs investigation. |
+| `violations_lookup` | **Working** | SA Open Data. 15 violations (3 open) confirmed on Rio 1604. |
+| `permit_lookup` | **Working** | SA Open Data. |
+| `comps_lookup` | **Partial** | Census ACS5 market rents work. ATTOM sale comps return empty — TX non-disclosure state + ATTOM tier limitation. |
+| `underwrite` | **Working** | NOI/cap rate math. Verified $734,763 NOI on Rio 1604. |
+| `maturity_estimator` | **Working** | Derived from deed origination date. 53 months to maturity on Rio 1604. |
+| `synthesis` | **Working** | 7-section format, PURSUE/WATCHLIST/PASS. temperature=0. 3-model fallback chain (Llama 70B → Gemma 4 31B → Llama 3.2 3B). No chain-of-thought leaking. |
+| App deployment | **Live** | `app.nidoandkey.com` on Railway via Dockerfile. |
+| Landing page | **Live** | `nidoandkey.com` on Vercel. |
+| PDF export | Built | `/export` endpoint exists. WeasyPrint + Jinja2. |
+| Email delivery | Built | Resend wired up. Needs verified sender domain. |
+| Scanner | Built | ATTOM bulk query + scoring logic exists. Not yet run live. |
 
 ---
 
-## Critical Technical Lessons (Hard-Won)
+## Critical Technical Lessons
 
-### owner_lookup: Use ATTOM, not Browserbase/BCAD
+### parse_om: Mistral OCR document_annotation
 
-`owner_lookup` was rewritten from Stagehand/BCAD scraping to ATTOM API. The ATTOM `expandedprofile` endpoint returns everything in one call:
-- `assessment.owner.owner1.fullName` — owner name
-- `assessment.owner.mailingAddressOneLine` — mailing address (detect out-of-state)
-- `assessment.owner.absenteeOwnerStatus` — "A" = absentee
-- `assessment.owner.corporateIndicator` — "Y" = LLC/corporation
-- `assessment.market.mktTtlValue` — appraised value
-- `assessment.mortgage.FirstConcurrent` — original lender, amount, date
+`mistral-ocr-latest` with `document_annotation_format=response_format_from_pydantic_model(OMExtraction)` does OCR + structured extraction in one call. Returns citations (page + section) per field.
 
-Endpoint: `GET https://api.gateway.attomdata.com/propertyapi/v1.0.0/property/expandedprofile`
-Params: `address1=<street>`, `address2=<city, TX zip>`
-
-**If ATTOM misses a property**, fall back to Bexar County ArcGIS:
-`GET https://maps.bexar.org/arcgis/rest/services/Parcels/MapServer/0/query`
-Field name is `Situs` (not `SITEADDR`). Query: `Situs LIKE '%14900%NACOG%'`
-
-### deed_lookup: Bexar County Clerk does NOT index all doc types by address
-
-When searching `bexar.tx.publicsearch.us` by property address:
-- **DOES appear**: mechanics liens, UCC filings, releases, waivers, affidavits
-- **DOES NOT appear**: Deeds of Trust, Assignments of Deed of Trust
-
-These are indexed differently in this system (by grantor/grantee name, not address). Do not expect to find DTs or assignment chains via address search.
-
-The real distress signal is mechanics liens (unpaid contractors) and UCC filings (lender continuation statements). These DO appear by address.
-
-### deed_lookup: Use regex on raw accessibility tree, not LLM extraction
-
-`session.extract()` with no args returns `{"pageText": "..."}` — the raw accessibility tree text. Cell values follow the pattern `cell: VALUE`. Parse with:
+Key: `resp.document_annotation` returns a JSON string, not a typed object. Parse it:
 ```python
-cell_values = re.findall(r"cell: ([^\n\\]+)", page_text)
-```
-Each row = 14 cells: `[checkbox, menu, status, grantor, grantee, doc_type, date, ...]`
-
-LLM-based schema extraction (`session.extract(schema={...})`) is nondeterministic for counting. Use regex for counts — it's deterministic and faster.
-
-### networkidle never resolves on bexar.tx.publicsearch.us
-
-The site fires continuous analytics requests. `waitUntil: "networkidle"` times out at 30s. Use:
-```python
-await session.navigate(url=url)
-await asyncio.sleep(5)
+raw = json.loads(resp.document_annotation)
+extraction = OMExtraction.model_validate(raw)
 ```
 
-### Stagehand extract() always returns {"extraction": "freeform text"}
+Runs in 8-15 seconds. Costs ~$0.05/OM. Handles scanned PDFs (pdfplumber returns 0 chars on those).
 
-Schema params are effectively ignored. The result is always a freeform text blob. Parse key:value lines manually. See `_parse_extraction_blob()` in `skills/owner_lookup/run.py` for the pattern (though that skill no longer uses Stagehand).
+### tax_lookup: Browserbase REST + Playwright CSS selectors
 
-### BROWSERBASE_SKILLS in server.py
+BCAD TrueAutomation blocks headless browsers from local IPs after repeated requests. Solution:
+
+1. POST to `https://api.browserbase.com/v1/sessions` with `X-BB-API-Key` header → get `connectUrl`
+2. `playwright.chromium.connect_over_cdp(connect_url)` — no local Chrome needed
+3. Click `#propertySearchOptions_advanced` — triggers ASP.NET postback (full page reload)
+4. After postback: fill `#propertySearchOptions_streetNumber` and `#propertySearchOptions_streetName`
+5. Click `#propertySearchOptions_searchAdv` (button ID changes in advanced mode)
+6. Click `a[href*='prop_id=']` first result
+7. Click "Taxing Jurisdiction" text to expand section
+8. Parse `Taxes w/Current Exemptions: $X` and `Total Tax Rate: X`
+
+BCAD returns estimated annual tax based on appraised value × composite rate. It does NOT report whether taxes are actually paid or delinquent. For delinquency you'd need the Bexar County Tax Assessor-Collector (separate system, not yet wired up).
+
+### deed_lookup: Address search only finds certain doc types
+
+On `bexar.tx.publicsearch.us`:
+- **Appears by address**: mechanics liens, UCC filings, releases, affidavits
+- **Does NOT appear by address**: Deeds of Trust, mortgage assignments
+
+Real distress signal is mechanics liens (unpaid contractors). 11 on Rio 1604 = significant cash flow distress.
+
+### Synthesis: free tier rate limits
+
+`meta-llama/llama-3.3-70b-instruct:free` on OpenRouter/Venice has aggressive rate limits. Server has a 3-model fallback:
+```python
+["meta-llama/llama-3.3-70b-instruct:free", "google/gemma-4-31b-it:free", "meta-llama/llama-3.2-3b-instruct:free"]
+```
+Different providers = rate limits don't stack. On 429 or 404, falls through to next model automatically.
+
+### BROWSERBASE_SKILLS subprocess isolation
 
 ```python
 BROWSERBASE_SKILLS = {"tax_lookup", "portfolio_crawler"}
 ```
 
-Skills in this set run as subprocesses (isolated event loop — Stagehand asyncio conflicts with FastAPI). `owner_lookup` was removed from this set when it was rewritten to use httpx (synchronous, no event loop issues). Don't add synchronous HTTP skills back to this set.
+These run as subprocesses (isolated event loop). Stagehand/Playwright asyncio conflicts with FastAPI's event loop. Don't add synchronous HTTP skills to this set.
 
 ### OMs never contain loan data
 
-Tested 9 real OMs — 0/9 have loan terms in the PDF. Loan data always comes from external sources:
-- Origination lender + amount: ATTOM `assessment.mortgage.FirstConcurrent`
-- Current servicer / UCC continuation: Bexar County Clerk (`deed_lookup`)
+0/9 tested OMs have loan terms. Loan data comes from:
+- Current servicer / UCC filings: Bexar County Clerk (`deed_lookup`)
+- Original lender + amount: ATTOM `assessment.mortgage.FirstConcurrent` (when owner_lookup works)
 
-### Demo OM addresses are fictional
+### Test address for real data
 
-`culebra_om.pdf` → "2455 Culebra Rd" — no ATTOM or county records
-`blanco_om.pdf` → "7821 Blanco Rd" — no ATTOM or county records
-`mccullough_om.pdf` → "4123 McCullough Ave" — no ATTOM or county records
-
-Use `14900 Nacogdoches Rd` (San Antonio, TX 78247) for real data testing.
+`14900 Nacogdoches Rd, San Antonio, TX 78247` (Rio @ 1604) — confirmed working across all skills. Do not test against demo OM addresses (culebra_om, blanco_om, mccullough_om) — those are fictional.
 
 ---
 
-## Skill Pipeline Flow (server.py)
+## Supabase Tables
 
-```
-parse_om          → extracts address, units, year_built, asking_price from PDF
-owner_lookup      → ATTOM: owner name, mailing address, absentee flag, lender info
-deed_lookup       → Bexar County Clerk: mechanics liens, UCC filings
-tax_lookup        → BCAD: tax delinquency (Stagehand)
-violations_lookup → SA Open Data: open code violations
-comps_lookup      → Census: market rents by ZIP
-underwrite        → NOI, cap rate, price/unit math from OM data
-maturity_estimator→ Loan pressure (uses origination_date + 5yr estimate)
-synthesize_analysis → Builds structured prompt
-[LLM synthesis]   → 7-section analysis, PURSUE/WATCHLIST/PASS verdict
-```
+- `pipeline_runs` — every OM analysis + scanner run (type, verdict, elapsed, skill results)
+- `om_analyses` — structured OM data after each analysis (institutional context graph — feeds prior-deal context into synthesis)
+- `subscribers` — email list for monthly scanner report
+- `contacts` — landing page form submissions
 
-Key context fields wired between skills in server.py (lines ~258-290):
-- `owner_lookup` → ctx: `owner_name`, `attom_lender`, `attom_loan_amount`, `attom_loan_date`, `absentee_owner`, `corporate_owner`, `attom_id`, `apn`
-- `deed_lookup` → ctx: `deed_maturity_date` (origination + 5yr), `loan_distress_signals`, `loan_assignments`
+---
+
+## Verified E2E Run — Rio @ 1604 (14900 Nacogdoches Rd)
+
+Reference numbers. If a future run diverges significantly, investigate before assuming it's correct.
+
+| Field | Value | Source |
+|---|---|---|
+| Units | 132 | Mistral OCR from OM |
+| Year built | 1984 | Mistral OCR from OM |
+| Occupancy | 95% | Mistral OCR from OM |
+| In-place revenue | $1,988,946/yr | Mistral OCR from OM |
+| NOI | $734,763 | Calculated ($1,988,946 × 0.95 − $8,748 × 132) |
+| Broker cap rate | 6.25% | Mistral OCR from OM |
+| Offering structure | Free and Clear | Mistral OCR from OM |
+| Lender | Ready Capital Mortgage Financing 2021-FL7 LLC | Bexar County Clerk session replay confirmed |
+| Mechanics liens | 11 | Bexar County Clerk session replay confirmed |
+| Origination date | 10/14/2025 | Bexar County Clerk |
+| Loan maturity | 2030-10-14 (53 months) | Derived |
+| Estimated annual tax | $341,130.35 | BCAD session replay confirmed |
+| Tax rate | 2.267474% | Bexar County composite |
+| Open violations | 3 | SA Open Data |
+| Verdict | WATCHLIST | No asking price → can't run cap rate at ask |
 
 ---
 
 ## What's Left To Do
 
-- [ ] **Verify Resend sender domain** — `resend.com/domains`, verify `noor-acq.com` DNS. Required before any email sends. (~10 min)
-- [ ] **Add first subscriber** — `INSERT INTO subscribers (email, firm) VALUES ('your@email.com', 'Noor Acquisitions');` in Supabase
-- [ ] **Run scanner live** — `scanner/scan_bexar.py --dry-run` first, confirm top 20 list, then full run
-- [ ] **First client outreach** — warm emails, attach `landing/assets/sample-memo.pdf`
-- [ ] **Server hosting** — currently local only; needs deployment (Railway, Fly, etc.) for clients to use `/analyze`
-- [ ] **Scanner routine** — schedule monthly run once subscriber list exists
+- [ ] **owner_lookup** — ATTOM 504s on SA properties. Either fix ATTOM endpoint or switch to BCAD scrape
+- [ ] **Verify Resend sender domain** — `resend.com/domains`, verify DNS. Required before any email sends
+- [ ] **Run scanner live** — `.venv/bin/python3 scanner/scan_bexar.py --dry-run` first, then full run
+- [ ] **First client outreach** — warm emails, attach sample memo PDF
+- [ ] **Scanner routine** — schedule monthly once subscriber list exists
+- [ ] **Tax delinquency** — real delinquency requires Bexar County Tax Assessor-Collector (separate from BCAD). Not yet built.
 
 ---
 
-## Brand / Product Details
+## Deployment
+
+- **App**: `app.nidoandkey.com` → Railway, auto-deploys on push to `main`
+- **Landing**: `nidoandkey.com` → Vercel, auto-deploys on push to `main` from `landing/`
+- **Dockerfile**: Stage 1 = Bun builds React UI. Stage 2 = Python + FastAPI serves both API and `ui/dist/`
+- **Repo**: `github.com/gurnoornatt/yard`, branch `main`
+
+To deploy: `git push origin main` — Railway builds Docker image, deploys automatically (~5 min).
+
+All env vars must be set in Railway dashboard Variables. Local `.env` is not used in production.
+
+---
+
+## Brand / Product
 
 - **Brand:** Nido & Key ("nido" = nest in Spanish)
-- **Domain:** nidoandkey.com
-- **Email:** noor@nidoandkey.com (Google Workspace + Resend)
+- **Email:** noor@nidoandkey.com
 - **Target client:** Multifamily syndicators and PE acquisitions teams in Texas
 - **Pricing:** $4,000/month retainer (4 OMs + weekly motivated seller list) or $500/memo one-off
-- **Score never shown to clients** — internal only. Clients see "signals," not numbers.
-- **PDF style:** Navy `#1e3a5f` + near-black `#1a1a1a`, amber for flags, 2 pages max, methodology footnote on every report
-
----
-
-## Git / Deploy
-
-- Repo: `github.com/gurnoornatt/yard`
-- Branch: `main`
-- Landing page deploys from `landing/` automatically to Vercel on push
-- Server (`server.py`) is not on Vercel — runs locally or needs separate hosting

@@ -1,10 +1,13 @@
 """
 Motivated seller scanner for Bexar County multifamily.
 
+Data source: Bexar County ArcGIS parcel service (free, no API key needed).
+Replaces ATTOM bulk query which 504s on our plan tier.
+
 Workflow:
-  1. ATTOM bulk query — all multifamily within 20mi of SA center
+  1. ArcGIS parcel query — all multifamily PropUse codes in Bexar County
   2. Score each property by seller pressure signals
-  3. Top 30 → mini-pipeline: owner_lookup + tax_lookup + comps_lookup
+  3. Top N → mini-pipeline: deed_lookup + tax_lookup + violations_lookup
   4. Generate PDF → deliver to all active subscribers
 
 Usage:
@@ -14,14 +17,11 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import concurrent.futures
 import importlib.util
 import json
 import logging
 import os
-import re
 import sys
-import threading
 import time
 from pathlib import Path
 
@@ -41,224 +41,98 @@ logging.basicConfig(
 )
 log = logging.getLogger("scanner")
 
-ATTOM_KEY = os.environ.get("ATTOM_API_KEY", "")
-ATTOM_BASE = "https://api.gateway.attomdata.com/propertyapi/v1.0.0"
+# Bexar County ArcGIS parcel service — free, no auth required
+ARCGIS_URL = "https://maps.bexar.org/arcgis/rest/services/Parcels/MapServer/0/query"
 
-# Bexar County FIPS geoid — kept for reference; county-level snapshot queries time out
-BEXAR_GEOID = "CO48029"
+# BCAD PropUse codes for multifamily (5+ units)
+# 800 = market rate apartments (754 props)
+# 801 = apartment complexes (20 props)
+# 810 = medium multifamily (256 props)
+# 814 = mid-size apartments (54 props)
+# 815 = residential apartments (29 props)
+# 817 = workforce/affordable market (48 props)
+# 820 = large apartment complexes (12 props)
+# 8100 = large apartment complexes (46 props)
+# 8105 = luxury apartments (51 props)
+MULTIFAMILY_CODES = ["800", "801", "810", "814", "815", "817", "820", "8100", "8105"]
 
-# All Bexar County ZIP codes that contain multifamily stock
-BEXAR_ZIPS = [
-    "78201",
-    "78202",
-    "78203",
-    "78204",
-    "78205",
-    "78206",
-    "78207",
-    "78208",
-    "78209",
-    "78210",
-    "78211",
-    "78212",
-    "78213",
-    "78214",
-    "78215",
-    "78216",
-    "78217",
-    "78218",
-    "78219",
-    "78220",
-    "78221",
-    "78222",
-    "78223",
-    "78224",
-    "78225",
-    "78226",
-    "78227",
-    "78228",
-    "78229",
-    "78230",
-    "78231",
-    "78232",
-    "78233",
-    "78237",
-    "78238",
-    "78239",
-    "78240",
-    "78241",
-    "78242",
-    "78244",
-    "78245",
-    "78247",
-    "78248",
-    "78249",
-    "78250",
-    "78251",
-    "78252",
-    "78253",
-    "78254",
-    "78255",
-    "78256",
-    "78257",
-    "78258",
-    "78259",
-    "78260",
-    "78261",
-    "78263",
-    "78264",
-    "78266",
-]
+ARCGIS_FIELDS = "PropID,Situs,Owner,YrBlt,TotVal,LandVal,ImprVal,Zip,PropUse,AddrSt,AddrCity"
 
 
-class _RateLimiter:
-    """Token-bucket rate limiter. Thread-safe, shared across all workers."""
-
-    def __init__(self, max_per_minute: int):
-        self._lock = threading.Lock()
-        self._calls: list[float] = []
-        self._max = max_per_minute
-
-    def acquire(self) -> None:
-        with self._lock:
-            now = time.time()
-            self._calls = [t for t in self._calls if now - t < 60]
-            if len(self._calls) >= self._max:
-                sleep_for = 60 - (now - self._calls[0]) + 0.05
-                time.sleep(sleep_for)
-                now = time.time()
-                self._calls = [t for t in self._calls if now - t < 60]
-            self._calls.append(now)
+def _build_where() -> str:
+    return " OR ".join(f"PropUse='{c}'" for c in MULTIFAMILY_CODES)
 
 
-# Stay well under ATTOM's 150 req/min limit — leaves headroom for /analyze calls
-_attom_limiter = _RateLimiter(max_per_minute=100)
+def fetch_multifamily_parcels() -> list[dict]:
+    """Fetch all multifamily parcels from Bexar County ArcGIS. Free, no key needed."""
+    results: list[dict] = []
+    where = _build_where()
+    offset = 0
+    page_size = 1000
 
-
-def _attom_headers() -> dict:
-    return {"APIKey": ATTOM_KEY, "Accept": "application/json"}
-
-
-def _fetch_zip_multifamily(zip_code: str) -> list[dict]:
-    """Fetch all multifamily properties for one ZIP code, paginating as needed."""
-    results = []
-    page = 1
     while True:
         try:
-            _attom_limiter.acquire()
             r = httpx.get(
-                f"{ATTOM_BASE}/assessment/snapshot",
+                ARCGIS_URL,
                 params={
-                    "postalcode": zip_code,
-                    "propertytype": "MULTI FAMILY DWELLING",
-                    "pageSize": 100,
-                    "page": page,
+                    "where": where,
+                    "outFields": ARCGIS_FIELDS,
+                    "returnGeometry": "false",
+                    "f": "json",
+                    "resultRecordCount": page_size,
+                    "resultOffset": offset,
                 },
-                headers=_attom_headers(),
                 timeout=30,
             )
             r.raise_for_status()
             data = r.json()
-            properties = data.get("property") or []
-            if not properties:
+            features = data.get("features", [])
+            if not features:
                 break
-            results.extend(properties)
-            if len(properties) < 100:
+            batch = [f["attributes"] for f in features]
+            results.extend(batch)
+            log.info("  ArcGIS page offset=%d → %d records", offset, len(batch))
+            if not data.get("exceededTransferLimit"):
                 break
-            page += 1
+            offset += page_size
+            time.sleep(0.3)  # polite pacing — free public service
         except Exception as e:
-            log.warning("ATTOM fetch error zip=%s page=%d: %s", zip_code, page, e)
+            log.warning("ArcGIS fetch error at offset=%d: %s", offset, e)
             break
+
     return results
 
 
-def fetch_all_multifamily() -> list[dict]:
-    """Fetch all Bexar County multifamily via parallel ZIP-code queries.
+def normalize_arcgis(feat: dict) -> dict:
+    """Convert ArcGIS parcel attributes to score.py-compatible format.
 
-    County-geoid snapshot queries time out — ZIP-level queries are fast and reliable.
-    Runs up to 6 ZIPs concurrently; deduplicates by attomId.
+    Preserves raw ArcGIS data under '_arcgis' key so mini-pipeline can access PropID.
+    Maps to the nested ATTOM-like structure that score_property() reads.
+
+    NOTE: Zip/AddrCity/AddrSt are the OWNER's mailing address, not the property address.
+    Property ZIP is not in the ArcGIS export — Situs has street only.
     """
-    all_results: list[dict] = []
-    seen_ids: set[str] = set()
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
-        futures = {ex.submit(_fetch_zip_multifamily, z): z for z in BEXAR_ZIPS}
-        for future in concurrent.futures.as_completed(futures):
-            z = futures[future]
-            props = future.result()
-            new_props = []
-            for p in props:
-                aid = str(
-                    p.get("identifier", {}).get("attomId")
-                    or p.get("identifier", {}).get("Id")
-                    or ""
-                )
-                if aid and aid in seen_ids:
-                    continue
-                if aid:
-                    seen_ids.add(aid)
-                new_props.append(p)
-            if new_props:
-                log.info("  ZIP %s — %d properties", z, len(new_props))
-                all_results.extend(new_props)
-    return all_results
+    situs = (feat.get("Situs") or "").strip()
 
+    # Owner mailing address fields (not property address)
+    owner_state = (feat.get("AddrSt") or "").strip().upper()
+    # Property ZIP: not in ArcGIS data; derive from Situs if embedded, else leave blank
+    # Skills work with just street + city=San Antonio, state=TX
+    full_address = f"{situs}, San Antonio, TX" if situs else "Unknown"
 
-def _parse_state_from_address(mailing: str) -> str:
-    """Extract 2-letter state code from ATTOM mailing address: '123 ST, CITY, TX 12345'."""
-    m = re.search(r",\s+([A-Z]{2})\s+\d{5}", mailing)
-    return m.group(1) if m else ""
-
-
-def _fetch_one_expanded(aid: str) -> tuple[str, dict]:
-    try:
-        _attom_limiter.acquire()
-        r = httpx.get(
-            f"{ATTOM_BASE}/property/expandedprofile",
-            params={"attomId": aid},
-            headers=_attom_headers(),
-            timeout=20,
-        )
-        if r.status_code == 200:
-            props = r.json().get("property") or []
-            if props:
-                return aid, props[0]
-    except Exception as e:
-        log.warning("  expandedprofile fetch failed for %s: %s", aid, e)
-    return aid, {}
-
-
-def fetch_sale_dates(attom_ids: list[str]) -> dict[str, dict]:
-    """Fetch expandedprofile for top-N shortlist, parallelized across 8 workers.
-
-    Returns dict keyed by attomId with the full expandedprofile property dict,
-    which includes sale date, mortgage origination, and owner mailing address.
-    """
-    result: dict[str, dict] = {}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
-        for aid, expanded in ex.map(_fetch_one_expanded, attom_ids):
-            if expanded:
-                result[aid] = expanded
-    return result
-
-
-def _merge_expanded(raw: dict, expanded: dict) -> dict:
-    """Merge expandedprofile fields into snapshot dict in the format score.py expects.
-
-    score.py looks for: p['mortgage']['FirstMortgageDate'], p['owner']['mailingState'],
-    p['sale']['saleTransDate']. Expandedprofile buries these under assessment.*
-    """
-    merged = dict(raw)
-    fc = expanded.get("assessment", {}).get("mortgage", {}).get("FirstConcurrent", {})
-    if fc.get("date"):
-        merged["mortgage"] = {"FirstMortgageDate": fc["date"]}
-    owner = expanded.get("assessment", {}).get("owner", {})
-    mailing = owner.get("mailingAddressOneLine", "")
-    state = _parse_state_from_address(mailing)
-    if state:
-        merged["owner"] = {"mailingState": state}
-    if expanded.get("sale"):
-        merged["sale"] = expanded["sale"]
-    return merged
+    return {
+        # score.py compat fields
+        "address": {"oneLine": full_address, "_situs": situs},
+        "summary": {"yearbuilt": feat.get("YrBlt")},
+        "assessment": {
+            "assessed": {"assdttlvalue": feat.get("TotVal")},
+            "land": {"landval": feat.get("LandVal")},
+            "impr": {"imprval": feat.get("ImprVal")},
+        },
+        "owner": {"mailingState": owner_state, "ownerName": feat.get("Owner", "")},
+        "identifier": {"Id": str(int(feat.get("PropID") or 0))},
+        "_arcgis": feat,  # raw ArcGIS record — Zip here is owner mailing ZIP, not property ZIP
+    }
 
 
 def _load_skill(name: str):
@@ -270,68 +144,82 @@ def _load_skill(name: str):
 
 
 def run_mini_pipeline(prop: ScoredProperty) -> dict:
-    """Run owner_lookup + tax_lookup + comps_lookup for a single property."""
-    addr_parts = prop.address.split(",")
-    street = addr_parts[0].strip() if addr_parts else prop.address
-    city_part = addr_parts[1].strip() if len(addr_parts) > 1 else "San Antonio"
+    """Run deed_lookup + tax_lookup + violations_lookup for a top-scored property."""
+    arcgis = prop.raw.get("_arcgis", {})
+    situs = arcgis.get("Situs", prop.address).strip()
+    zip_code = prop.zip_code
+    bcad_prop_id = str(int(arcgis.get("PropID") or 0)) if arcgis.get("PropID") else ""
+
+    # Strip house number for street name (tax_lookup needs both separately)
     params = {
-        "address": street,
-        "city": city_part,
+        "address": situs,
+        "city": "San Antonio",
         "state": "TX",
-        "zip": prop.zip_code,
-        "bcad_prop_id": "",
+        "zip": zip_code,
+        "bcad_prop_id": bcad_prop_id,
     }
+
     enriched = {
         "address": prop.address,
         "units": prop.units,
         "year_built": prop.year_built,
         "appraised_value": prop.appraised_value,
         "zip_code": prop.zip_code,
+        "owner_name": arcgis.get("Owner"),
+        "owner_state": arcgis.get("AddrSt", ""),
+        "prop_use": arcgis.get("PropUse", ""),
+        "bcad_prop_id": bcad_prop_id,
         "signals": prop.signals,
         "score": prop.score,
-        "owner_name": None,
-        "tax_delinquent": None,
-        "tax_status": None,
+        "liens": [],
+        "open_violations": 0,
+        "tax_annual": None,
         "market": {},
     }
 
-    # Owner lookup (Stagehand — may be slow)
+    # deed_lookup — mechanics liens from Bexar County Clerk
     try:
-        owner_mod = _load_skill("owner_lookup")
-        owner_result = owner_mod.run(params)
-        owner_data = owner_result.get("data") or {}
-        enriched["owner_name"] = owner_data.get("owner_name")
-        if owner_data.get("bcad_prop_id"):
-            params["bcad_prop_id"] = owner_data["bcad_prop_id"]
-        log.info("    owner_lookup: %s", enriched["owner_name"] or "—")
+        deed_mod = _load_skill("deed_lookup")
+        deed_result = deed_mod.run(params)
+        deed_data = deed_result.get("data") or {}
+        liens = deed_data.get("mechanics_liens") or []
+        enriched["liens"] = liens
+        if liens and "Mechanics liens" not in " ".join(enriched["signals"]):
+            enriched["signals"] = enriched["signals"] + [f"{len(liens)} mechanics lien(s)"]
+        log.info("    deed_lookup: %d liens", len(liens))
     except Exception as e:
-        log.warning("    owner_lookup failed: %s", e)
+        log.warning("    deed_lookup failed: %s", e)
 
-    # Tax lookup (Stagehand — may be slow)
+    # tax_lookup — BCAD estimated annual tax (uses PropID directly if available)
     try:
         tax_mod = _load_skill("tax_lookup")
         tax_result = tax_mod.run(params)
         tax_data = tax_result.get("data") or {}
-        enriched["tax_delinquent"] = tax_data.get("delinquent", False)
-        enriched["tax_status"] = tax_data.get("status", "")
-        if enriched["tax_delinquent"] and "Tax delinquency" not in " ".join(
-            enriched["signals"]
-        ):
-            enriched["signals"] = enriched["signals"] + ["Tax delinquency"]
-        log.info("    tax_lookup: %s", enriched["tax_status"] or "—")
+        enriched["tax_annual"] = tax_data.get("estimated_annual_tax")
+        log.info("    tax_lookup: %s", enriched["tax_annual"] or "—")
     except Exception as e:
         log.warning("    tax_lookup failed: %s", e)
 
-    # Comps lookup (ATTOM + Census — fast)
+    # violations_lookup — SA Open Data code violations
+    try:
+        viol_mod = _load_skill("violations_lookup")
+        viol_result = viol_mod.run(params)
+        viol_data = viol_result.get("data") or {}
+        violations = viol_data.get("violations") or []
+        open_viols = [v for v in violations if str(v.get("status", "")).lower() in ("open", "active")]
+        enriched["open_violations"] = len(open_viols)
+        if open_viols and "Open violations" not in " ".join(enriched["signals"]):
+            enriched["signals"] = enriched["signals"] + [f"{len(open_viols)} open violation(s)"]
+        log.info("    violations_lookup: %d open", len(open_viols))
+    except Exception as e:
+        log.warning("    violations_lookup failed: %s", e)
+
+    # comps_lookup — Census ACS market rents for context
     try:
         comps_mod = _load_skill("comps_lookup")
         comps_result = comps_mod.run(params)
         comps_data = comps_result.get("data") or {}
         enriched["market"] = comps_data.get("market") or {}
-        log.info(
-            "    comps_lookup: median_rent=%s",
-            enriched["market"].get("median_rent", "—"),
-        )
     except Exception as e:
         log.warning("    comps_lookup failed: %s", e)
 
@@ -339,85 +227,66 @@ def run_mini_pipeline(prop: ScoredProperty) -> dict:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Bexar County motivated seller scanner"
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Skip mini-pipeline and email, just score",
-    )
-    parser.add_argument(
-        "--top",
-        type=int,
-        default=20,
-        help="Number of properties in report (default 20)",
-    )
-    parser.add_argument(
-        "--no-email", action="store_true", help="Generate PDF but do not email"
-    )
-    parser.add_argument(
-        "--no-sale-dates",
-        action="store_true",
-        help="Skip sale-date enrichment (fastest dry run, score from snapshot only)",
-    )
+    parser = argparse.ArgumentParser(description="Bexar County motivated seller scanner")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Score only — skip mini-pipeline and email")
+    parser.add_argument("--top", type=int, default=20,
+                        help="Properties in report (default 20)")
+    parser.add_argument("--no-email", action="store_true",
+                        help="Generate PDF but do not email")
     parser.add_argument("--output", default="", help="Save PDF to this path (optional)")
     args = parser.parse_args()
 
-    log.info("=== Bexar County Multifamily Scanner ===")
-    log.info("Fetching apartments from ATTOM (Bexar County geoid=%s)...", BEXAR_GEOID)
-    raw_properties = fetch_all_multifamily()
-    log.info("Fetched %d properties", len(raw_properties))
+    log.info("=== Bexar County Multifamily Scanner (ArcGIS) ===")
+    log.info("Fetching multifamily parcels from Bexar County parcel service...")
+    raw_features = fetch_multifamily_parcels()
+    log.info("Fetched %d multifamily parcels", len(raw_features))
 
-    if not raw_properties:
-        log.error("No properties returned from ATTOM. Check API key and quota.")
+    if not raw_features:
+        log.error("No parcels returned from ArcGIS. Check URL or service availability.")
         sys.exit(1)
 
-    # Score all (first pass — no sale dates yet)
-    scored = [score_property(p) for p in raw_properties]
+    # Normalize to score.py format
+    normalized = [normalize_arcgis(f) for f in raw_features]
+
+    # Score all properties
+    scored = [score_property(p) for p in normalized]
     scored.sort(key=lambda x: x.score, reverse=True)
 
-    # Enrich top 2×N candidates with expandedprofile before final sort
-    # expandedprofile adds: mortgage origination date, owner state, sale date
-    candidate_ids = [p.attom_id for p in scored[: args.top * 2] if p.attom_id]
-    if candidate_ids and not args.no_sale_dates:
-        log.info(
-            "Fetching expanded profiles for top %d candidates (parallel)...",
-            len(candidate_ids),
-        )
-        expanded_map = fetch_sale_dates(candidate_ids)
-        enriched_raws = []
-        for p in scored[: args.top * 2]:
-            raw = dict(p.raw)
-            if p.attom_id in expanded_map:
-                raw = _merge_expanded(raw, expanded_map[p.attom_id])
-            enriched_raws.append(raw)
-        rescored = [score_property(r) for r in enriched_raws]
-        rescored.sort(key=lambda x: x.score, reverse=True)
-        top_n = rescored[: args.top]
-    else:
-        top_n = scored[: args.top]
-
-    log.info("Top %d by score:", len(top_n))
-    for i, p in enumerate(top_n[:10], 1):
-        log.info(
-            "  %d. %s (score=%d) — %s", i, p.address, p.score, "; ".join(p.signals)
-        )
+    log.info("Top %d by score:", min(10, len(scored)))
+    for i, p in enumerate(scored[:10], 1):
+        log.info("  %d. %s (score=%d) — %s", i, p.address[:60], p.score, "; ".join(p.signals) or "no signals")
 
     if args.dry_run:
         log.info("Dry run — skipping mini-pipeline and report generation.")
-        print(json.dumps([p._asdict() for p in top_n[:5]], indent=2, default=str))
+        output = [
+            {
+                "rank": i + 1,
+                "address": p.address,
+                "owner": p.raw.get("owner", {}).get("ownerName", ""),
+                "owner_state": p.raw.get("owner", {}).get("mailingState", ""),
+                "year_built": p.year_built,
+                "appraised_value": p.appraised_value,
+                "zip_code": p.zip_code,
+                "score": p.score,
+                "signals": p.signals,
+                "bcad_prop_id": p.raw.get("identifier", {}).get("Id", ""),
+            }
+            for i, p in enumerate(scored[: args.top])
+        ]
+        print(json.dumps(output, indent=2, default=str))
         return
 
-    # Enrich top N via mini-pipeline
+    # Full run: mini-pipeline on top N
+    top_n = scored[: args.top]
     log.info("Running mini-pipeline on top %d properties...", len(top_n))
     enriched = []
     for i, prop in enumerate(top_n, 1):
-        log.info("[%d/%d] %s", i, len(top_n), prop.address)
+        log.info("[%d/%d] %s", i, len(top_n), prop.address[:60])
         data = run_mini_pipeline(prop)
         enriched.append(data)
 
-    # Generate PDF
+    # Generate PDF report
     try:
         from reports.generate import build_monthly_context, render_pdf
 
@@ -426,16 +295,13 @@ def main() -> None:
         log.info("PDF generated (%d bytes)", len(pdf_bytes))
     except ImportError as e:
         log.error("WeasyPrint not installed: %s", e)
-        log.error(
-            "Run: brew install cairo pango gdk-pixbuf && uv add weasyprint jinja2"
-        )
         sys.exit(1)
 
     if args.output:
         Path(args.output).write_bytes(pdf_bytes)
         log.info("Saved PDF to %s", args.output)
 
-    # Log scanner run to pipeline_runs
+    # Log to Supabase
     try:
         supabase_url = os.environ.get("SUPABASE_URL", "")
         supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
@@ -471,9 +337,7 @@ def main() -> None:
         supabase_url = os.environ.get("SUPABASE_URL", "")
         supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
         if not supabase_url or not supabase_key:
-            log.warning(
-                "SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set — skipping email delivery"
-            )
+            log.warning("SUPABASE credentials not set — skipping email delivery")
             return
 
         sb = create_client(supabase_url, supabase_key)
@@ -488,7 +352,6 @@ def main() -> None:
                 continue
             send_monthly_report(email, pdf_bytes, month_label)
             log.info("  Sent to %s", email)
-
     except Exception as e:
         log.error("Email delivery failed: %s", e)
 
