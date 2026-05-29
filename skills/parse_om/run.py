@@ -33,6 +33,7 @@ ANNOTATION_PROMPT = (
 # Pydantic schema for Mistral document_annotation
 # ---------------------------------------------------------------------------
 
+
 class CitedStr(BaseModel):
     value: Optional[str] = None
     source: str = "not found"
@@ -53,30 +54,61 @@ class OMExtraction(BaseModel):
     city: CitedStr = Field(description="City name")
     state: CitedStr = Field(description="2-letter state code e.g. TX")
     zip_code: CitedStr = Field(description="5-digit zip code")
-    property_type: CitedStr = Field(description="e.g. Multifamily, NNN Retail, Industrial Park")
-    asset_class: CitedStr = Field(description="One of: multifamily commercial industrial retail office mobile_home_park other")
+    property_type: CitedStr = Field(
+        description="e.g. Multifamily, NNN Retail, Industrial Park"
+    )
+    asset_class: CitedStr = Field(
+        description="One of: multifamily commercial industrial retail office mobile_home_park other"
+    )
     units: CitedInt = Field(description="Total unit count as integer")
     asking_price: CitedInt = Field(description="Asking price in dollars as integer")
-    year_built: CitedInt = Field(description="Year property was built as 4-digit integer")
+    year_built: CitedInt = Field(
+        description="Year property was built as 4-digit integer"
+    )
     occupancy_pct: CitedInt = Field(description="Current occupancy as integer 0-100")
-    annual_in_place_revenue: CitedInt = Field(description="Total current annual rent revenue T12 in dollars")
-    annual_projected_revenue: CitedInt = Field(description="Pro forma total annual rent revenue in dollars")
-    expense_per_unit_annual: CitedInt = Field(description="Total operating expenses per unit per year in dollars")
-    value_add_rent_premium: CitedInt = Field(description="Monthly rent premium per unit after renovation in dollars")
-    renovation_cost_per_unit: CitedInt = Field(description="Renovation cost per unit in dollars")
-    broker_cap_rate_pct: CitedFloat = Field(description="Cap rate as decimal percentage e.g. 7.76 for 7.76%")
+    annual_in_place_revenue: CitedInt = Field(
+        description="Total current annual rent revenue T12 in dollars"
+    )
+    annual_projected_revenue: CitedInt = Field(
+        description="Pro forma total annual rent revenue in dollars"
+    )
+    expense_per_unit_annual: CitedInt = Field(
+        description="Total operating expenses per unit per year in dollars"
+    )
+    value_add_rent_premium: CitedInt = Field(
+        description="Monthly rent premium per unit after renovation in dollars"
+    )
+    renovation_cost_per_unit: CitedInt = Field(
+        description="Renovation cost per unit in dollars"
+    )
+    broker_cap_rate_pct: CitedFloat = Field(
+        description="Cap rate as decimal percentage e.g. 7.76 for 7.76%"
+    )
     management_company: CitedStr = Field(description="Property management company name")
-    offering_structure: CitedStr = Field(description="e.g. Free and Clear, Loan Assumption, All Cash")
-    loan_type: CitedStr = Field(description="e.g. Fannie Mae DUS, Freddie Mac, CMBS. Null if free and clear.")
-    loan_original_balance: CitedInt = Field(description="Original loan amount in dollars. Null if no existing loan.")
-    loan_interest_rate_pct: CitedFloat = Field(description="Loan interest rate as decimal e.g. 4.84 for 4.84%. Null if no loan.")
-    loan_term_months: CitedInt = Field(description="Loan term in months 60-480. Null if no existing loan.")
-    unit_mix_csv: CitedStr = Field(description="bedroomsN,count,sqft,in_place_rent,market_rent rows separated by semicolons")
+    offering_structure: CitedStr = Field(
+        description="e.g. Free and Clear, Loan Assumption, All Cash"
+    )
+    loan_type: CitedStr = Field(
+        description="e.g. Fannie Mae DUS, Freddie Mac, CMBS. Null if free and clear."
+    )
+    loan_original_balance: CitedInt = Field(
+        description="Original loan amount in dollars. Null if no existing loan."
+    )
+    loan_interest_rate_pct: CitedFloat = Field(
+        description="Loan interest rate as decimal e.g. 4.84 for 4.84%. Null if no loan."
+    )
+    loan_term_months: CitedInt = Field(
+        description="Loan term in months 60-480. Null if no existing loan."
+    )
+    unit_mix_csv: CitedStr = Field(
+        description="bedroomsN,count,sqft,in_place_rent,market_rent rows separated by semicolons"
+    )
 
 
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
+
 
 def _extract_json(raw: str) -> dict:
     raw = raw.strip()
@@ -121,8 +153,15 @@ def _parse_unit_mix_csv(csv_val: str) -> list[dict]:
             sq_ft = int(parts[2]) if len(parts) > 2 and parts[2] else None
             in_place = int(parts[3]) if len(parts) > 3 and parts[3] else None
             market = int(parts[4]) if len(parts) > 4 and parts[4] else None
-            units.append({"bedrooms": beds, "count": count, "sq_ft": sq_ft,
-                          "in_place_rent": in_place, "market_rent": market})
+            units.append(
+                {
+                    "bedrooms": beds,
+                    "count": count,
+                    "sq_ft": sq_ft,
+                    "in_place_rent": in_place,
+                    "market_rent": market,
+                }
+            )
         except (ValueError, IndexError):
             continue
     return units
@@ -132,14 +171,17 @@ def _parse_unit_mix_csv(csv_val: str) -> list[dict]:
 # Stage 2: gpt-oss-120b verification pass
 # ---------------------------------------------------------------------------
 
+
 def _verify(financials: dict) -> dict:
     """Free contradiction check via gpt-oss-120b. Mutates and returns financials."""
     if not OPENROUTER_KEY or not financials:
         return financials
 
     offering = financials.get("offering_structure", "")
-    is_free_clear = offering and any(p in offering.lower() for p in
-                                      ["free and clear", "all cash", "no debt", "unencumbered"])
+    is_free_clear = offering and any(
+        p in offering.lower()
+        for p in ["free and clear", "all cash", "no debt", "unencumbered"]
+    )
 
     verify_prompt = f"""Check these extracted OM values for contradictions. Output JSON only. No explanation.
 
@@ -159,14 +201,18 @@ If nothing needs correction return: {{"corrections": {{}}}}
 JSON:"""
 
     try:
-        client = OpenAI(base_url=_OR_BASE, api_key=OPENROUTER_KEY, timeout=30.0, max_retries=0)
+        client = OpenAI(
+            base_url=_OR_BASE, api_key=OPENROUTER_KEY, timeout=30.0, max_retries=0
+        )
         resp = client.chat.completions.create(
             model=_OR_MODEL,
             messages=[{"role": "user", "content": verify_prompt}],
             max_tokens=300,
             temperature=0,
         )
-        corrections = _extract_json(resp.choices[0].message.content or "").get("corrections", {})
+        corrections = _extract_json(resp.choices[0].message.content or "").get(
+            "corrections", {}
+        )
         for field, val in corrections.items():
             if val is None:
                 financials.pop(field, None)
@@ -181,7 +227,12 @@ JSON:"""
 
     # Enforce free-and-clear directly (belt-and-suspenders)
     if is_free_clear:
-        for loan_field in ["loan_original_balance", "loan_type", "loan_interest_rate", "loan_term_months"]:
+        for loan_field in [
+            "loan_original_balance",
+            "loan_type",
+            "loan_interest_rate",
+            "loan_term_months",
+        ]:
             financials.pop(loan_field, None)
 
     return financials
@@ -190,6 +241,7 @@ JSON:"""
 # ---------------------------------------------------------------------------
 # Stage 1 — Mistral OCR path
 # ---------------------------------------------------------------------------
+
 
 def _build_output_from_extraction(raw: OMExtraction) -> dict:
     """Normalize OMExtraction → standard parse_om output dict + citations."""
@@ -257,12 +309,20 @@ def _build_output_from_extraction(raw: OMExtraction) -> dict:
         ("offering_structure", "offering_structure"),
     ]:
         val = cite(getattr(raw, attr), dst)
-        if val and isinstance(val, str) and val.strip().lower() not in ("null", "none", ""):
+        if (
+            val
+            and isinstance(val, str)
+            and val.strip().lower() not in ("null", "none", "")
+        ):
             financials[dst] = val.strip()
 
     # Unit mix
     mix_val = cite(raw.unit_mix_csv, "unit_mix")
-    if mix_val and isinstance(mix_val, str) and mix_val.strip().lower() not in ("null", "none", ""):
+    if (
+        mix_val
+        and isinstance(mix_val, str)
+        and mix_val.strip().lower() not in ("null", "none", "")
+    ):
         parsed = _parse_unit_mix_csv(mix_val)
         if parsed:
             financials["unit_mix"] = parsed
@@ -283,9 +343,15 @@ def _build_output_from_extraction(raw: OMExtraction) -> dict:
         "zip": _s(raw.zip_code),
         "property_type": _s(raw.property_type, "Unknown"),
         "asset_class": _s(raw.asset_class, "other").lower(),
-        "units": raw.units.value if raw.units and isinstance(raw.units.value, int) else None,
-        "asking_price": raw.asking_price.value if raw.asking_price and isinstance(raw.asking_price.value, (int, float)) else None,
-        "year_built": raw.year_built.value if raw.year_built and isinstance(raw.year_built.value, int) else None,
+        "units": raw.units.value
+        if raw.units and isinstance(raw.units.value, int)
+        else None,
+        "asking_price": raw.asking_price.value
+        if raw.asking_price and isinstance(raw.asking_price.value, (int, float))
+        else None,
+        "year_built": raw.year_built.value
+        if raw.year_built and isinstance(raw.year_built.value, int)
+        else None,
         "source": "Offering Memorandum (PDF) via Mistral OCR",
         "financials": financials,
         "citations": citations,
@@ -310,7 +376,7 @@ def _run_mistral_path(pdf_path: str) -> dict:
             purpose="ocr",
         )
     signed = client.files.get_signed_url(file_id=uploaded.id, expiry=1)
-    print(f"Uploaded {pdf_name} in {time.time()-t0:.1f}s, file_id={uploaded.id}")
+    print(f"Uploaded {pdf_name} in {time.time() - t0:.1f}s, file_id={uploaded.id}")
 
     # OCR + structured extraction in one call
     t1 = time.time()
@@ -322,7 +388,7 @@ def _run_mistral_path(pdf_path: str) -> dict:
         document_annotation_prompt=ANNOTATION_PROMPT,
         confidence_scores_granularity="page",
     )
-    print(f"Mistral OCR + annotation in {time.time()-t1:.1f}s")
+    print(f"Mistral OCR + annotation in {time.time() - t1:.1f}s")
 
     if not resp.document_annotation:
         raise ValueError("Mistral returned no document_annotation")
@@ -332,7 +398,7 @@ def _run_mistral_path(pdf_path: str) -> dict:
     extraction = OMExtraction.model_validate(raw_dict)
 
     result = _build_output_from_extraction(extraction)
-    print(f"Total Mistral path: {time.time()-t0:.1f}s")
+    print(f"Total Mistral path: {time.time() - t0:.1f}s")
     return result
 
 
@@ -409,14 +475,42 @@ OM Text:
 JSON:"""
 
 FINANCIAL_KEYWORDS = [
-    "unit mix", "rent roll", "per unit", "vacancy", "noi", "net operating",
-    "expense", "revenue", "cap rate", "value-add", "renovation", "occupancy",
-    "bedroom", "pro forma", "income", "operating", "loan", "fannie", "freddie",
-    "interest rate", "amortization", "debt service", "management fee",
-    "in-place", "in place", "asking price", "offering price",
+    "unit mix",
+    "rent roll",
+    "per unit",
+    "vacancy",
+    "noi",
+    "net operating",
+    "expense",
+    "revenue",
+    "cap rate",
+    "value-add",
+    "renovation",
+    "occupancy",
+    "bedroom",
+    "pro forma",
+    "income",
+    "operating",
+    "loan",
+    "fannie",
+    "freddie",
+    "interest rate",
+    "amortization",
+    "debt service",
+    "management fee",
+    "in-place",
+    "in place",
+    "asking price",
+    "offering price",
 ]
 
-_FREE_AND_CLEAR_PHRASES = ["free and clear", "all cash", "no existing debt", "unencumbered", "no debt"]
+_FREE_AND_CLEAR_PHRASES = [
+    "free and clear",
+    "all cash",
+    "no existing debt",
+    "unencumbered",
+    "no debt",
+]
 
 
 def _is_free_and_clear(text: str) -> bool:
@@ -446,7 +540,9 @@ def _extract_pages(pdf_path: str) -> tuple[str, str]:
 def _llm_call(prompt: str, max_tokens: int = 600) -> str:
     if OPENROUTER_KEY:
         try:
-            client = OpenAI(base_url=_OR_BASE, api_key=OPENROUTER_KEY, timeout=30.0, max_retries=0)
+            client = OpenAI(
+                base_url=_OR_BASE, api_key=OPENROUTER_KEY, timeout=30.0, max_retries=0
+            )
             resp = client.chat.completions.create(
                 model=_OR_MODEL,
                 messages=[{"role": "user", "content": prompt}],
@@ -457,7 +553,9 @@ def _llm_call(prompt: str, max_tokens: int = 600) -> str:
             return resp.choices[0].message.content or ""
         except Exception as e:
             print(f"OpenRouter failed, falling back to nano-8b: {e}")
-    client = OpenAI(base_url=_NVIDIA_BASE, api_key=NVIDIA_KEY, timeout=90.0, max_retries=0)
+    client = OpenAI(
+        base_url=_NVIDIA_BASE, api_key=NVIDIA_KEY, timeout=90.0, max_retries=0
+    )
     resp = client.chat.completions.create(
         model=_NVIDIA_MODEL,
         messages=[{"role": "user", "content": prompt}],
@@ -478,7 +576,11 @@ def _clean_financials(raw: dict) -> dict:
         return {}
     cleaned: dict = {}
     csv_val = raw.get("unit_mix_csv")
-    if csv_val and isinstance(csv_val, str) and csv_val.strip().lower() not in ("null", "none", ""):
+    if (
+        csv_val
+        and isinstance(csv_val, str)
+        and csv_val.strip().lower() not in ("null", "none", "")
+    ):
         parsed = _parse_unit_mix_csv(csv_val)
         if parsed:
             cleaned["unit_mix"] = parsed
@@ -505,7 +607,11 @@ def _clean_financials(raw: dict) -> dict:
         cleaned["broker_cap_rate"] = round(float(cap) / 100, 4)
     for key in ["loan_type", "management_company", "offering_structure"]:
         val = raw.get(key)
-        if val and isinstance(val, str) and val.strip().lower() not in ("null", "none", ""):
+        if (
+            val
+            and isinstance(val, str)
+            and val.strip().lower() not in ("null", "none", "")
+        ):
             cleaned[key] = val.strip()
     # Loan term sanity check
     if "loan_term_months" in cleaned:
@@ -521,23 +627,38 @@ def _run_legacy_path(pdf_path: str) -> dict:
     try:
         basic_text, financial_text = _extract_pages(pdf_path)
     except Exception as e:
-        return {"job": "parse_om", "status": "error", "data": None, "reason": f"PDF read error: {e}"}
+        return {
+            "job": "parse_om",
+            "status": "error",
+            "data": None,
+            "reason": f"PDF read error: {e}",
+        }
 
-    print(f"Pages extracted in {time.time()-t0:.1f}s")
+    print(f"Pages extracted in {time.time() - t0:.1f}s")
     print(f"Basic text length: {len(basic_text)} chars")
     print(f"Financial text length: {len(financial_text)} chars")
 
     if not basic_text:
-        return {"job": "parse_om", "status": "error", "data": None, "reason": "No text extracted from PDF"}
+        return {
+            "job": "parse_om",
+            "status": "error",
+            "data": None,
+            "reason": "No text extracted from PDF",
+        }
 
     try:
         t1 = time.time()
         raw = _llm_call(EXTRACT_PROMPT.format(text=basic_text[:6000]), max_tokens=600)
         parsed = _extract_json(raw)
-        print(f"LLM basic extract in {time.time()-t1:.1f}s")
+        print(f"LLM basic extract in {time.time() - t1:.1f}s")
         print(f"BASIC EXTRACTED: {json.dumps(parsed, indent=2)}")
     except Exception as e:
-        return {"job": "parse_om", "status": "error", "data": None, "reason": f"LLM extraction error: {e}"}
+        return {
+            "job": "parse_om",
+            "status": "error",
+            "data": None,
+            "reason": f"LLM extraction error: {e}",
+        }
 
     def _str(val, default="") -> str:
         if val is None or str(val).strip().lower() in ("none", "null", "n/a", ""):
@@ -552,14 +673,22 @@ def _run_legacy_path(pdf_path: str) -> dict:
         "property_type": _str(parsed.get("property_type"), "Unknown"),
         "asset_class": _str(parsed.get("asset_class"), "other").lower(),
         "units": parsed.get("units") if isinstance(parsed.get("units"), int) else None,
-        "asking_price": parsed.get("asking_price") if isinstance(parsed.get("asking_price"), (int, float)) else None,
-        "year_built": parsed.get("year_built") if isinstance(parsed.get("year_built"), int) else None,
+        "asking_price": parsed.get("asking_price")
+        if isinstance(parsed.get("asking_price"), (int, float))
+        else None,
+        "year_built": parsed.get("year_built")
+        if isinstance(parsed.get("year_built"), int)
+        else None,
         "source": "Offering Memorandum (PDF)",
     }
 
     if not data["city"]:
-        return {"job": "parse_om", "status": "error", "data": None,
-                "reason": "Could not extract city — address withheld or unreadable"}
+        return {
+            "job": "parse_om",
+            "status": "error",
+            "data": None,
+            "reason": "Could not extract city — address withheld or unreadable",
+        }
 
     free_clear = _is_free_and_clear(basic_text)
     merged: dict = {}
@@ -570,7 +699,7 @@ def _run_legacy_path(pdf_path: str) -> dict:
         try:
             t2 = time.time()
             merged.update(_llm_extract(FINANCIAL_PROMPT, financial_text[:8000]))
-            print(f"Financial extract in {time.time()-t2:.1f}s")
+            print(f"Financial extract in {time.time() - t2:.1f}s")
         except Exception as e:
             print(f"Financial pass-1 error: {e}")
 
@@ -595,10 +724,16 @@ def _run_legacy_path(pdf_path: str) -> dict:
 # Main entry point
 # ---------------------------------------------------------------------------
 
+
 def run(params: dict) -> dict:
     pdf_path = params.get("pdf_path", "")
     if not pdf_path or not Path(pdf_path).exists():
-        return {"job": "parse_om", "status": "error", "data": None, "reason": "PDF path not found"}
+        return {
+            "job": "parse_om",
+            "status": "error",
+            "data": None,
+            "reason": "PDF path not found",
+        }
 
     if MISTRAL_KEY:
         try:

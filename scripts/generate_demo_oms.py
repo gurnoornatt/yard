@@ -1,4 +1,5 @@
 """Generate the three demo broker OM PDFs for the Sentinel hackathon demo."""
+
 from fpdf import FPDF
 from pathlib import Path
 
@@ -133,6 +134,7 @@ PROPERTIES = [
 
 def generate(prop: dict) -> None:
     from fpdf.enums import XPos, YPos
+
     pdf = FPDF()
     pdf.add_page()
     pdf.set_margins(20, 20, 20)

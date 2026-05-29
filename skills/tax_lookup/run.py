@@ -4,17 +4,19 @@ tax_lookup — Bexar County property tax delinquency check.
 Uses Browserbase REST API directly (no Stagehand) to get a cloud browser CDP URL,
 then Playwright with CSS selectors for deterministic form filling. No AI involved.
 """
+
 import asyncio
 import json
 import os
 import re
 import sys
-from datetime import date
 
 import httpx
 
 BCAD_SEARCH = "https://bexar.trueautomation.com/clientdb/PropertySearch.aspx?cid=110"
-BCAD_PROP = "https://bexar.trueautomation.com/clientdb/property.aspx?cid=110&prop_id={prop_id}"
+BCAD_PROP = (
+    "https://bexar.trueautomation.com/clientdb/property.aspx?cid=110&prop_id={prop_id}"
+)
 BB_CREATE = "https://api.browserbase.com/v1/sessions"
 
 BB_KEY = os.environ.get("BROWSERBASE_API_KEY", "")
@@ -26,7 +28,9 @@ def _parse_tax_text(text: str) -> dict:
     # Extract the estimated annual tax burden and total tax rate from Taxing Jurisdiction section.
 
     # "Taxes w/Current Exemptions: $341,130.35" or similar
-    total_match = re.search(r"Taxes w/Current Exemptions:\s*(\$[\d,]+(?:\.\d{2})?)", text)
+    total_match = re.search(
+        r"Taxes w/Current Exemptions:\s*(\$[\d,]+(?:\.\d{2})?)", text
+    )
     estimated_tax = total_match.group(1) if total_match else None
 
     # "Total Tax Rate: 2.267474"
@@ -59,7 +63,10 @@ def _create_bb_session() -> str:
     if not connect_url:
         raise RuntimeError(f"No connectUrl in Browserbase response: {data}")
     session_id = data.get("id", "unknown")
-    print(f"[tax_lookup] BB session {session_id} | CDP: {connect_url[:60]}...", file=sys.stderr)
+    print(
+        f"[tax_lookup] BB session {session_id} | CDP: {connect_url[:60]}...",
+        file=sys.stderr,
+    )
     return connect_url
 
 
@@ -78,7 +85,9 @@ async def _scrape(address: str, bcad_prop_id: str = "") -> dict:
     async with async_playwright() as pw:
         if connect_url:
             browser = await pw.chromium.connect_over_cdp(connect_url)
-            ctx = browser.contexts[0] if browser.contexts else await browser.new_context()
+            ctx = (
+                browser.contexts[0] if browser.contexts else await browser.new_context()
+            )
             page = ctx.pages[0] if ctx.pages else await ctx.new_page()
         else:
             browser = await pw.chromium.launch(headless=True)
@@ -86,7 +95,11 @@ async def _scrape(address: str, bcad_prop_id: str = "") -> dict:
 
         try:
             if bcad_prop_id:
-                await page.goto(BCAD_PROP.format(prop_id=bcad_prop_id), wait_until="domcontentloaded", timeout=30000)
+                await page.goto(
+                    BCAD_PROP.format(prop_id=bcad_prop_id),
+                    wait_until="domcontentloaded",
+                    timeout=30000,
+                )
                 await page.wait_for_timeout(2000)
                 taxing = page.locator("text=Taxing Jurisdiction").first
                 if await taxing.count() > 0:
@@ -102,13 +115,20 @@ async def _scrape(address: str, bcad_prop_id: str = "") -> dict:
             current_url = page.url
             print(f"[tax_lookup] URL: {current_url}", file=sys.stderr)
             if "customdisplay" in current_url:
-                print("[tax_lookup] Error page — IP blocked even on cloud browser", file=sys.stderr)
+                print(
+                    "[tax_lookup] Error page — IP blocked even on cloud browser",
+                    file=sys.stderr,
+                )
                 return {}
 
             # Click "Advanced >>" — triggers ASP.NET postback that reveals street fields
-            async with page.expect_navigation(wait_until="domcontentloaded", timeout=15000):
+            async with page.expect_navigation(
+                wait_until="domcontentloaded", timeout=15000
+            ):
                 await page.click("#propertySearchOptions_advanced")
-            print("[tax_lookup] Advanced >> clicked (postback complete)", file=sys.stderr)
+            print(
+                "[tax_lookup] Advanced >> clicked (postback complete)", file=sys.stderr
+            )
             await page.wait_for_timeout(1000)
 
             # Fill street number and name — now visible in advanced mode

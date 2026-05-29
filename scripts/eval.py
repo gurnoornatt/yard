@@ -154,7 +154,11 @@ def eval_parse_om():
         if loan_found:
             present_loan += 1
             for f in LOAN_FIELDS:
-                check_field(f"financials/{f}", financials.get(f), expect_null=(financials.get(f) is None))
+                check_field(
+                    f"financials/{f}",
+                    financials.get(f),
+                    expect_null=(financials.get(f) is None),
+                )
         else:
             info(
                 "loan fields: all null (loan terms not found in this OM — this is normal)"

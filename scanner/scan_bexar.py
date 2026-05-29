@@ -32,7 +32,7 @@ ROOT = Path(__file__).parent.parent
 load_dotenv(ROOT / ".env")
 sys.path.insert(0, str(ROOT))
 
-from scanner.score import ScoredProperty, score_property
+from scanner.score import ScoredProperty, score_property  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -49,19 +49,71 @@ BEXAR_GEOID = "CO48029"
 
 # All Bexar County ZIP codes that contain multifamily stock
 BEXAR_ZIPS = [
-    "78201", "78202", "78203", "78204", "78205", "78206", "78207", "78208",
-    "78209", "78210", "78211", "78212", "78213", "78214", "78215", "78216",
-    "78217", "78218", "78219", "78220", "78221", "78222", "78223", "78224",
-    "78225", "78226", "78227", "78228", "78229", "78230", "78231", "78232",
-    "78233", "78237", "78238", "78239", "78240", "78241", "78242", "78244",
-    "78245", "78247", "78248", "78249", "78250", "78251", "78252", "78253",
-    "78254", "78255", "78256", "78257", "78258", "78259", "78260", "78261",
-    "78263", "78264", "78266",
+    "78201",
+    "78202",
+    "78203",
+    "78204",
+    "78205",
+    "78206",
+    "78207",
+    "78208",
+    "78209",
+    "78210",
+    "78211",
+    "78212",
+    "78213",
+    "78214",
+    "78215",
+    "78216",
+    "78217",
+    "78218",
+    "78219",
+    "78220",
+    "78221",
+    "78222",
+    "78223",
+    "78224",
+    "78225",
+    "78226",
+    "78227",
+    "78228",
+    "78229",
+    "78230",
+    "78231",
+    "78232",
+    "78233",
+    "78237",
+    "78238",
+    "78239",
+    "78240",
+    "78241",
+    "78242",
+    "78244",
+    "78245",
+    "78247",
+    "78248",
+    "78249",
+    "78250",
+    "78251",
+    "78252",
+    "78253",
+    "78254",
+    "78255",
+    "78256",
+    "78257",
+    "78258",
+    "78259",
+    "78260",
+    "78261",
+    "78263",
+    "78264",
+    "78266",
 ]
 
 
 class _RateLimiter:
     """Token-bucket rate limiter. Thread-safe, shared across all workers."""
+
     def __init__(self, max_per_minute: int):
         self._lock = threading.Lock()
         self._calls: list[float] = []
@@ -135,7 +187,11 @@ def fetch_all_multifamily() -> list[dict]:
             props = future.result()
             new_props = []
             for p in props:
-                aid = str(p.get("identifier", {}).get("attomId") or p.get("identifier", {}).get("Id") or "")
+                aid = str(
+                    p.get("identifier", {}).get("attomId")
+                    or p.get("identifier", {}).get("Id")
+                    or ""
+                )
                 if aid and aid in seen_ids:
                     continue
                 if aid:
@@ -325,7 +381,10 @@ def main() -> None:
     # expandedprofile adds: mortgage origination date, owner state, sale date
     candidate_ids = [p.attom_id for p in scored[: args.top * 2] if p.attom_id]
     if candidate_ids and not args.no_sale_dates:
-        log.info("Fetching expanded profiles for top %d candidates (parallel)...", len(candidate_ids))
+        log.info(
+            "Fetching expanded profiles for top %d candidates (parallel)...",
+            len(candidate_ids),
+        )
         expanded_map = fetch_sale_dates(candidate_ids)
         enriched_raws = []
         for p in scored[: args.top * 2]:

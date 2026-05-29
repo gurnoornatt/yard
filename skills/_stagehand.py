@@ -4,6 +4,7 @@ Shared Stagehand client factory.
 Production: Browserbase (cloud, handles concurrency, works on any server).
 Dev fallback: local Chrome when BROWSERBASE_API_KEY is not set.
 """
+
 import os
 from pathlib import Path
 

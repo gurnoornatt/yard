@@ -14,11 +14,11 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent / ".env")
 
-from fastapi import FastAPI, File, UploadFile
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, Response, StreamingResponse
-from fastapi.staticfiles import StaticFiles
-from openai import OpenAI
+from fastapi import FastAPI, File, UploadFile  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.responses import HTMLResponse, Response, StreamingResponse  # noqa: E402
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+from openai import OpenAI  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -252,8 +252,12 @@ async def _log_run(
                         "units": ctx.get("units"),
                         "year_built": ctx.get("year_built"),
                         "asking_price": ctx.get("asking_price"),
-                        "annual_in_place_revenue": financials.get("annual_in_place_revenue"),
-                        "annual_projected_revenue": financials.get("annual_projected_revenue"),
+                        "annual_in_place_revenue": financials.get(
+                            "annual_in_place_revenue"
+                        ),
+                        "annual_projected_revenue": financials.get(
+                            "annual_projected_revenue"
+                        ),
                         "broker_cap_rate": financials.get("broker_cap_rate"),
                         "offering_structure": financials.get("offering_structure"),
                         "citations": parse_data.get("citations") or {},
@@ -302,10 +306,14 @@ async def _get_context_deals(state: str, asset_class: str, current_address: str)
                 return ""
             lines = []
             for d in deals:
-                rev = f"${d['annual_in_place_revenue']:,}" if d.get("annual_in_place_revenue") else "N/A"
+                rev = (
+                    f"${d['annual_in_place_revenue']:,}"
+                    if d.get("annual_in_place_revenue")
+                    else "N/A"
+                )
                 lines.append(
-                    f"- {d['address']}: {d.get('verdict','?')} | revenue {rev} | "
-                    f"liens:{d.get('has_liens',False)} | tax_delinquent:{d.get('tax_delinquent',False)}"
+                    f"- {d['address']}: {d.get('verdict', '?')} | revenue {rev} | "
+                    f"liens:{d.get('has_liens', False)} | tax_delinquent:{d.get('tax_delinquent', False)}"
                 )
             return "Prior similar deals analyzed by this firm:\n" + "\n".join(lines)
     except Exception:
@@ -319,12 +327,17 @@ def _apply_deed_ctx(ctx: dict, data: dict) -> None:
         try:
             from datetime import date as _date
             import re as _re
+
             m_orig = _re.search(r"(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})", orig)
             y4_orig = _re.match(r"(\d{4})-(\d{2})-(\d{2})", orig)
             if y4_orig:
-                orig_d = _date(int(y4_orig.group(1)), int(y4_orig.group(2)), int(y4_orig.group(3)))
+                orig_d = _date(
+                    int(y4_orig.group(1)), int(y4_orig.group(2)), int(y4_orig.group(3))
+                )
             elif m_orig:
-                orig_d = _date(int(m_orig.group(3)), int(m_orig.group(1)), int(m_orig.group(2)))
+                orig_d = _date(
+                    int(m_orig.group(3)), int(m_orig.group(1)), int(m_orig.group(2))
+                )
             else:
                 orig_d = None
             if orig_d:
@@ -360,15 +373,20 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
             f.write(pdf_bytes)
             tmp_path = f.name
         loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(None, call_skill, "parse_om", {"pdf_path": tmp_path})
+        result = await loop.run_in_executor(
+            None, call_skill, "parse_om", {"pdf_path": tmp_path}
+        )
         Path(tmp_path).unlink(missing_ok=True)
         if result.get("status") == "ok" and result.get("data"):
             ctx = dict(result["data"])
             property_id = _slug(ctx.get("address", ""), ctx.get("zip", ""))
             financials = ctx.get("financials") or {}
             for _fkey in [
-                "unit_mix", "occupancy_rate", "annual_in_place_revenue",
-                "total_expense_per_unit_annual", "value_add_rent_premium_per_unit",
+                "unit_mix",
+                "occupancy_rate",
+                "annual_in_place_revenue",
+                "total_expense_per_unit_annual",
+                "value_add_rent_premium_per_unit",
                 "renovation_cost_per_unit",
             ]:
                 if financials.get(_fkey) is not None:
@@ -377,38 +395,84 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
         elapsed = round(time.time() - t0, 2)
         log.info("  ✓ parse_om [%s] %.2fs", status, elapsed)
         all_data["parse_om"] = result.get("data")
-        skill_log.append({"skill": "parse_om", "status": status, "elapsed_s": elapsed, "has_data": all_data["parse_om"] is not None})
-        yield sse("skill_complete", {"skill": "parse_om", "status": status, "data": result.get("data"), "property_id": property_id})
+        skill_log.append(
+            {
+                "skill": "parse_om",
+                "status": status,
+                "elapsed_s": elapsed,
+                "has_data": all_data["parse_om"] is not None,
+            }
+        )
+        yield sse(
+            "skill_complete",
+            {
+                "skill": "parse_om",
+                "status": status,
+                "data": result.get("data"),
+                "property_id": property_id,
+            },
+        )
     except Exception as e:
         log.error("  ✗ parse_om EXCEPTION: %s", e)
         yield sse("skill_error", {"skill": "parse_om", "error": str(e)})
 
     # ── WAVE 2: owner_lookup (fast ATTOM call; gives bcad_prop_id to tax_lookup) ──
-    yield sse("skill_start", {"skill": "owner_lookup", "label": SKILL_LABELS["owner_lookup"]})
+    yield sse(
+        "skill_start", {"skill": "owner_lookup", "label": SKILL_LABELS["owner_lookup"]}
+    )
     await asyncio.sleep(0)
     t0 = time.time()
     try:
         result = await call_skill_async("owner_lookup", ctx)
         data = result.get("data") or {}
-        for field in ("owner_name", "attom_lender", "attom_loan_amount", "attom_loan_date",
-                      "absentee_owner", "corporate_owner", "attom_id", "apn", "bcad_prop_id"):
+        for field in (
+            "owner_name",
+            "attom_lender",
+            "attom_loan_amount",
+            "attom_loan_date",
+            "absentee_owner",
+            "corporate_owner",
+            "attom_id",
+            "apn",
+            "bcad_prop_id",
+        ):
             if data.get(field):
                 ctx[field] = data[field]
         status = result.get("status", "ok")
         elapsed = round(time.time() - t0, 2)
         log.info("  ✓ owner_lookup [%s] %.2fs", status, elapsed)
         all_data["owner_lookup"] = result.get("data")
-        skill_log.append({"skill": "owner_lookup", "status": status, "elapsed_s": elapsed, "has_data": all_data["owner_lookup"] is not None})
-        yield sse("skill_complete", {"skill": "owner_lookup", "status": status, "data": result.get("data"), "property_id": property_id})
+        skill_log.append(
+            {
+                "skill": "owner_lookup",
+                "status": status,
+                "elapsed_s": elapsed,
+                "has_data": all_data["owner_lookup"] is not None,
+            }
+        )
+        yield sse(
+            "skill_complete",
+            {
+                "skill": "owner_lookup",
+                "status": status,
+                "data": result.get("data"),
+                "property_id": property_id,
+            },
+        )
     except Exception as e:
         log.error("  ✗ owner_lookup EXCEPTION: %s", e)
         yield sse("skill_error", {"skill": "owner_lookup", "error": str(e)})
 
     # ── WAVE 3: all remaining enrichment skills in parallel ───────────────────
     PARALLEL_SKILLS = [
-        "deed_lookup", "portfolio_crawler", "permit_lookup",
-        "tax_lookup", "violations_lookup", "comps_lookup",
-        "underwrite", "synthesize_analysis",
+        "deed_lookup",
+        "portfolio_crawler",
+        "permit_lookup",
+        "tax_lookup",
+        "violations_lookup",
+        "comps_lookup",
+        "underwrite",
+        "synthesize_analysis",
     ]
     for name in PARALLEL_SKILLS:
         yield sse("skill_start", {"skill": name, "label": SKILL_LABELS[name]})
@@ -422,7 +486,12 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
             res = await call_skill_async(name, dict(ctx_snap))
             return name, res, round(time.time() - t, 2), None
         except Exception as exc:
-            return name, {"status": "error", "data": None, "reason": str(exc)}, round(time.time() - t, 2), str(exc)
+            return (
+                name,
+                {"status": "error", "data": None, "reason": str(exc)},
+                round(time.time() - t, 2),
+                str(exc),
+            )
 
     tasks = [asyncio.create_task(_run_parallel(n)) for n in PARALLEL_SKILLS]
     for coro in asyncio.as_completed(tasks):
@@ -433,15 +502,33 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
         if name == "deed_lookup" and isinstance(data, dict):
             _apply_deed_ctx(ctx, data)
         all_data[name] = result.get("data")
-        skill_log.append({"skill": name, "status": status, "elapsed_s": elapsed, "has_data": all_data[name] is not None})
+        skill_log.append(
+            {
+                "skill": name,
+                "status": status,
+                "elapsed_s": elapsed,
+                "has_data": all_data[name] is not None,
+            }
+        )
         if err:
             yield sse("skill_error", {"skill": name, "error": err})
         else:
-            yield sse("skill_complete", {"skill": name, "status": status, "data": result.get("data"), "property_id": property_id})
+            yield sse(
+                "skill_complete",
+                {
+                    "skill": name,
+                    "status": status,
+                    "data": result.get("data"),
+                    "property_id": property_id,
+                },
+            )
         await asyncio.sleep(0)
 
     # ── WAVE 4: maturity_estimator — needs deed_maturity_date from wave 3 ────────
-    yield sse("skill_start", {"skill": "maturity_estimator", "label": SKILL_LABELS["maturity_estimator"]})
+    yield sse(
+        "skill_start",
+        {"skill": "maturity_estimator", "label": SKILL_LABELS["maturity_estimator"]},
+    )
     await asyncio.sleep(0)
     t0 = time.time()
     try:
@@ -450,8 +537,23 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
         elapsed = round(time.time() - t0, 2)
         log.info("  ✓ maturity_estimator [%s] %.2fs", status, elapsed)
         all_data["maturity_estimator"] = result.get("data")
-        skill_log.append({"skill": "maturity_estimator", "status": status, "elapsed_s": elapsed, "has_data": all_data["maturity_estimator"] is not None})
-        yield sse("skill_complete", {"skill": "maturity_estimator", "status": status, "data": result.get("data"), "property_id": property_id})
+        skill_log.append(
+            {
+                "skill": "maturity_estimator",
+                "status": status,
+                "elapsed_s": elapsed,
+                "has_data": all_data["maturity_estimator"] is not None,
+            }
+        )
+        yield sse(
+            "skill_complete",
+            {
+                "skill": "maturity_estimator",
+                "status": status,
+                "data": result.get("data"),
+                "property_id": property_id,
+            },
+        )
     except Exception as e:
         log.error("  ✗ maturity_estimator EXCEPTION: %s", e)
         yield sse("skill_error", {"skill": "maturity_estimator", "error": str(e)})
@@ -522,16 +624,19 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
         msgs = [{"role": "system", "content": sys_msg}, {"role": "user", "content": p}]
         # Fallback chain: different providers so rate limits don't stack
         _models = [
-            "meta-llama/llama-3.3-70b-instruct:free",   # Venice
-            "google/gemma-4-31b-it:free",                # Google
-            "meta-llama/llama-3.2-3b-instruct:free",     # smaller, different provider
+            "meta-llama/llama-3.3-70b-instruct:free",  # Venice
+            "google/gemma-4-31b-it:free",  # Google
+            "meta-llama/llama-3.2-3b-instruct:free",  # smaller, different provider
         ]
         last_err = None
         for model in _models:
             try:
                 stream = client.chat.completions.create(
-                    model=model, messages=msgs, stream=True,
-                    max_tokens=3000, temperature=0,
+                    model=model,
+                    messages=msgs,
+                    stream=True,
+                    max_tokens=3000,
+                    temperature=0,
                 )
                 text = ""
                 for chunk in stream:
@@ -555,12 +660,13 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
         # Strip preamble: find "## Bottom-Line Recommendation" immediately followed
         # (within a line or two) by PURSUE/WATCHLIST/PASS — that's the real start.
         import re as _re
+
         real_start = _re.search(
             r"## Bottom-Line Recommendation\s*\n\s*(PURSUE|WATCHLIST|PASS)",
             full_text,
         )
         if real_start:
-            full_text = full_text[real_start.start():]
+            full_text = full_text[real_start.start() :]
         else:
             # Fallback: any ## header that isn't at position 0
             for header in ("## Bottom-Line", "## Property Snapshot"):
@@ -577,10 +683,20 @@ async def run_analysis(pdf_bytes: bytes, filename: str) -> AsyncGenerator[str, N
         # Fallback: fast free model via OpenRouter to extract verdict word
         if verdict == "UNKNOWN" and full_text:
             try:
-                _vc = OpenAI(base_url=_OR_BASE, api_key=OPENROUTER_KEY, timeout=15.0, max_retries=0)
+                _vc = OpenAI(
+                    base_url=_OR_BASE,
+                    api_key=OPENROUTER_KEY,
+                    timeout=15.0,
+                    max_retries=0,
+                )
                 _vr = _vc.chat.completions.create(
                     model="meta-llama/llama-3.1-8b-instruct:free",
-                    messages=[{"role": "user", "content": f"Based on this real estate analysis, reply with exactly one word — PURSUE, WATCHLIST, or PASS:\n\n{full_text[:2000]}"}],
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": f"Based on this real estate analysis, reply with exactly one word — PURSUE, WATCHLIST, or PASS:\n\n{full_text[:2000]}",
+                        }
+                    ],
                     max_tokens=5,
                     temperature=0,
                     stream=False,
@@ -733,7 +849,9 @@ async def health_check():
 
     # --- API keys (presence only — no live calls to avoid costs) ---
     key_checks = {
-        "NVIDIA_API_KEY": {"fix": "Get from build.nvidia.com — required for parse_om and synthesis"},
+        "NVIDIA_API_KEY": {
+            "fix": "Get from build.nvidia.com — required for parse_om and synthesis"
+        },
         "OPENROUTER_API_KEY": {"fix": "Get from openrouter.ai"},
         "ATTOM_API_KEY": {"fix": "Get from api.gateway.attomdata.com"},
         "RESEND_API_KEY": {"fix": "Get from resend.com"},
