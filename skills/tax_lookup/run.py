@@ -172,6 +172,94 @@ async def _scrape(address: str, bcad_prop_id: str = "") -> dict:
             await browser.close()
 
 
+ACTTAX_LIST = "https://bexar.acttax.com/act_webdev/bexar/showlist.jsp"
+ACTTAX_DETAIL = "https://bexar.acttax.com/act_webdev/bexar/showdetail2.jsp"
+ACTTAX_REFERER = "https://bexar.acttax.com/act_webdev/bexar/index.jsp"
+
+
+def _parse_amount(s: str) -> float:
+    try:
+        return float(s.replace(",", "").replace("$", "").strip())
+    except (ValueError, AttributeError):
+        return 0.0
+
+
+def _acttax_delinquency(address: str) -> dict:
+    """Check Bexar County Tax Assessor-Collector for actual delinquency status.
+
+    Pure HTTP — no browser needed. Separate from BCAD (appraisal district).
+    Delinquent = Prior Year(s) Amount Due > $0.
+    """
+    parts = address.strip().split()
+    number = parts[0] if parts and parts[0].isdigit() else ""
+    street_word = parts[1][:8].upper() if len(parts) > 1 else ""
+    if not number or not street_word:
+        return {}
+
+    try:
+        r = httpx.post(
+            ACTTAX_LIST,
+            data={"searchby": "6", "criteria": f"{number} {street_word}"},
+            headers={
+                "Referer": ACTTAX_REFERER,
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            timeout=15,
+            follow_redirects=True,
+        )
+        r.raise_for_status()
+        cans = re.findall(r"can=(\d+)", r.text)
+        if not cans:
+            return {}
+
+        for can in cans[:5]:
+            dr = httpx.get(
+                ACTTAX_DETAIL,
+                params={"can": can, "ownerno": "0"},
+                headers={"Referer": ACTTAX_LIST},
+                timeout=15,
+            )
+            dr.raise_for_status()
+            html = dr.text
+
+            # Skip tangible property accounts (no real estate market value)
+            mkt_m = re.search(r"Total Market Value:.*?\$([\d,]+)", html, re.DOTALL)
+            if not mkt_m or _parse_amount(mkt_m.group(1)) < 10000:
+                continue
+
+            prior_m = re.search(r"Prior Year\(s\) Amount Due:.*?\$([\d,]+\.\d{2})", html, re.DOTALL)
+            total_m = re.search(r"Total Amount Due:.*?\$([\d,]+\.\d{2})", html, re.DOTALL)
+            levy_m = re.search(r"(20\d{2}) Year Tax Levy:.*?\$([\d,]+\.\d{2})", html, re.DOTALL)
+            lawsuits_m = re.search(r"Active Lawsuits:.*?</label>\s*([^\n<]+)", html, re.DOTALL)
+            judgments_m = re.search(r"Active Judgments:.*?</label>\s*([^\n<]+)", html, re.DOTALL)
+            payment_m = re.search(r"Last Payment Amount Received:.*?\$([\d,]+\.\d{2})", html, re.DOTALL)
+
+            prior_due = _parse_amount(prior_m.group(1)) if prior_m else 0.0
+            total_due = _parse_amount(total_m.group(1)) if total_m else 0.0
+
+            result = {
+                "delinquent": prior_due > 0,
+                "prior_year_amount_due": f"${prior_due:,.2f}",
+                "total_amount_due": f"${total_due:,.2f}",
+                "current_year_levy": f"${levy_m.group(2)}" if levy_m else None,
+                "tax_year": levy_m.group(1) if levy_m else None,
+                "active_lawsuits": lawsuits_m.group(1).strip() if lawsuits_m else None,
+                "active_judgments": judgments_m.group(1).strip() if judgments_m else None,
+                "last_payment_amount": f"${payment_m.group(1)}" if payment_m else None,
+                "account_number": can,
+            }
+            print(
+                f"[tax_lookup] acttax: delinquent={result['delinquent']} prior_due=${prior_due:,.2f} lawsuits={result['active_lawsuits']}",
+                file=sys.stderr,
+            )
+            return result
+
+    except Exception as e:
+        print(f"[tax_lookup] acttax fetch failed (non-fatal): {e}", file=sys.stderr)
+
+    return {}
+
+
 def run(params: dict) -> dict:
     state = params.get("state", "").strip().upper()
     if state and state != "TX":
@@ -194,15 +282,35 @@ def run(params: dict) -> dict:
         }
 
     try:
-        data = asyncio.run(_scrape(address=address, bcad_prop_id=bcad_prop_id))
-        if not data:
+        # BCAD: estimated annual tax + tax rate (Browserbase + Playwright)
+        bcad_data = asyncio.run(_scrape(address=address, bcad_prop_id=bcad_prop_id))
+
+        # Tax Assessor-Collector: actual delinquency status (pure HTTP, no browser)
+        acttax_data = _acttax_delinquency(address) if address else {}
+
+        if not bcad_data and not acttax_data:
             return {
                 "job": "tax_lookup",
                 "status": "data_unavailable",
-                "reason": "No results found for this address in BCAD",
+                "reason": "No results found for this address in BCAD or Tax Assessor-Collector",
                 "data": None,
             }
-        data["source"] = "BCAD (Bexar County Appraisal District)"
+
+        # Merge: acttax delinquency fields override BCAD's null delinquent field
+        data = bcad_data or {}
+        if acttax_data:
+            data["delinquent"] = acttax_data.get("delinquent")
+            data["prior_year_amount_due"] = acttax_data.get("prior_year_amount_due")
+            data["total_amount_due"] = acttax_data.get("total_amount_due")
+            data["current_year_levy"] = acttax_data.get("current_year_levy")
+            data["active_lawsuits"] = acttax_data.get("active_lawsuits")
+            data["active_judgments"] = acttax_data.get("active_judgments")
+            data["last_payment_amount"] = acttax_data.get("last_payment_amount")
+            data["account_number"] = acttax_data.get("account_number")
+            data["source"] = "BCAD (estimated tax) + Bexar County Tax Assessor-Collector (delinquency)"
+        else:
+            data["source"] = "BCAD (Bexar County Appraisal District)"
+
         return {"job": "tax_lookup", "status": "ok", "data": data}
     except Exception as e:
         return {"job": "tax_lookup", "status": "error", "reason": str(e), "data": None}

@@ -32,7 +32,7 @@ def _attom_fetch(address: str, city_state_zip: str) -> dict:
 
 
 def _arcgis_fetch(address: str) -> dict:
-    """Fallback: Bexar County ArcGIS parcel layer (free, BCAD data)."""
+    """Bexar County ArcGIS parcel layer — free, returns full owner mailing address."""
     m = re.match(r"^(\d+)\s+(\S+)", address.strip())
     if not m:
         return {}
@@ -53,20 +53,25 @@ def _arcgis_fetch(address: str) -> dict:
     if not feats:
         return {}
     a = feats[0]["attributes"]
-    addr_parts = [
-        a.get("AddrLn2") or a.get("AddrLn1") or "",
-        a.get("AddrCity") or "",
-        a.get("AddrSt") or "",
-        a.get("Zip") or "",
+    # Build full mailing address from all AddrLn fields
+    street_lines = [
+        a.get("AddrLn1") or "",
+        a.get("AddrLn2") or "",
+        a.get("AddrLn3") or "",
     ]
-    mailing = ", ".join(p for p in addr_parts if p and p.upper() != "NULL")
+    street = " ".join(line.strip() for line in street_lines if line and line.upper() != "NULL")
+    city = (a.get("AddrCity") or "").strip()
+    state = (a.get("AddrSt") or "").strip()
+    zipcode = (a.get("Zip") or "").strip()
+    parts = [street, city, state, zipcode]
+    mailing = ", ".join(p for p in parts if p and p.upper() != "NULL")
     return {
         "owner_name": a.get("Owner") or "",
         "owner_address": mailing,
-        "owner_state": a.get("AddrSt") or "",
+        "owner_state": state,
         "appraised_value": a.get("TotVal"),
         "prop_id": str(int(a["PropID"])) if a.get("PropID") else "",
-        "source": "Bexar County ArcGIS (fallback)",
+        "source": "Bexar County ArcGIS",
     }
 
 
@@ -131,8 +136,11 @@ def run(params: dict) -> dict:
     city_state_zip = f"{city}, {state or 'TX'} {zip_code}".strip(", ")
 
     try:
-        # --- Option A: ATTOM ---
-        prop = _attom_fetch(address, city_state_zip)
+        # --- Option A: ATTOM (often 504s on our plan tier — fall through to ArcGIS) ---
+        try:
+            prop = _attom_fetch(address, city_state_zip)
+        except Exception:
+            prop = {}
         if prop:
             assessment = prop.get("assessment") or {}
             owner_block = assessment.get("owner") or {}
