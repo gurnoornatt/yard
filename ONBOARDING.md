@@ -243,9 +243,93 @@ Reference numbers. Investigate if a future run diverges significantly.
 **GTM (priority over building right now):**
 - [ ] Build 50-person outreach list: Origami.chat query + Apollo free tier for emails
 - [ ] Set up EDGAR Form D alerts at `efts.sec.gov` (free — TX RE fund closings = dry powder signal)
-- [ ] Send 5 cold emails/day to SA multifamily firms (free OM analysis offer)
-- [ ] Run 15 research calls/day to national firms (student script — learn pain, don't pitch)
+- [ ] Send 40 cold emails/day to SA multifamily firms (free OM analysis offer)
+- [ ] Run 40 research calls/day to national firms (student script — learn pain, don't pitch)
 - [ ] First paying client: target week 3-4
+
+---
+
+## Daily GTM Routine
+
+### Morning — Research Calls (40/day, national firms, out of state)
+
+Goal: understand the real workflow. Not selling. Let them talk 80% of the time.
+
+**Get the list:** Apollo → Search → Companies → Industry: Real Estate → Keywords: multifamily → Company Size: 1-10, 11-50 → Location: blank (national). Export 200 companies, call 40/day.
+
+**Opening:**
+> "Hi, is this [Company]? Hey — my name is Noor, I'm a student at University of San Francisco studying real estate technology. I'm doing research on how acquisitions teams work through deals — specifically how you read and validate offering memorandums. Would anyone have five minutes?"
+
+**Once connected — open question, then shut up:**
+> "When a new OM lands in your inbox, what actually happens? Walk me through exactly what you do first, second, third."
+
+**Follow-up questions (only ask what they haven't already answered):**
+- "How long does that take you?"
+- "Walk me through how you figure out which properties are even worth looking at."
+- "What's the most annoying part of going through an OM?"
+- "What takes your analyst the most time every week?"
+- "Have you ever gotten deep into a deal and found something that wasn't in the OM?"
+- "How do you currently check public records — tax, liens, violations?"
+- "What has to happen for you to say yes to a deal?"
+
+**Never ask:** "What are your problems?" or "What would you pay for?" — they give fake corporate answers. Ask walk-me-through questions and listen.
+
+**Log every call immediately:**
+
+| Date | Company | What they said | Biggest time waster | Surprised by something not in OM | Public records — how/when |
+|---|---|---|---|---|---|
+
+**What you're listening for:**
+- "We spend X hours on Y every week" → workflow opportunity
+- "We got burned by something after LOI" → validates public records product
+- "Our analyst does this manually every time" → automation target
+- Same pain mentioned by 3+ people → that's what to build next
+
+---
+
+### Afternoon — Cold Emails (40/day, SA firms, free product offer)
+
+Goal: get someone to try the product. Parallel to calls — separate list, separate purpose.
+
+**Get the list:** Apollo → Search → People → Job Title: acquisitions, principal, founder → Keywords: multifamily → Location: San Antonio, Texas → Company Size: 1-10, 11-50.
+
+**The email:**
+
+> Subject: free OM analysis — Bexar County
+>
+> [Name] —
+>
+> I built a tool that pulls Bexar County tax delinquency, lien history, and ownership records on any SA multifamily deal you're evaluating. Surfaces problems brokers don't put in the OM.
+>
+> I'll run it free on one of your active deals. Takes 2 minutes from you — just forward me the OM.
+>
+> Worth a shot?
+>
+> Gurnoor
+> Nido & Key
+>
+> PS: If you'd rather keep spending 3 hours on it manually, totally respect that.
+
+One follow-up 4 days later if no reply:
+> "Still happy to run this if you have a deal in Bexar County. Otherwise no worries."
+
+Two touches max.
+
+**When someone responds:** Run their deal through the pipeline same day. Deliver the report. Then ask one question:
+> "Walk me through how you normally do this — where did this help, where did it fall short?"
+
+**Track in the same Google Sheet.**
+
+---
+
+### What Changes Your Direction
+
+| Signal | What it means | Action |
+|---|---|---|
+| 3+ calls mention same time waster | Real pain, worth building | Build that next |
+| Free report finds something real → client says "didn't know that" | Product works | Start charging |
+| Everyone says "we do this after LOI not before" | Wrong timing assumption | Reframe pitch |
+| Nobody does public records manually | Wrong pain point | Keep listening, find the real one |
 
 ---
 
